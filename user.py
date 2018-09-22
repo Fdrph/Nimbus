@@ -19,24 +19,24 @@ args = vars(parser.parse_args())
 print(args)
 
 
-def login():
-    print("login")
-def deluser():
-    print("deluser")
-def backup():
-    print("backup")
-def restore():
-    print("restore")
-def dirlist():
-    print("dirlist")
-def filelist():
-    print("filelist")
-def delete():
-    print("delete")
-def logout():
-    print("logout")
-def terminate():
-    print("terminate")
+def login(args):
+    print(args)
+def deluser(args):
+    print(args)
+def backup(args):
+    print(args)
+def restore(args):
+    print(args)
+def dirlist(args):
+    print(args)
+def filelist(args):
+    print(args)
+def delete(args):
+    print(args)
+def logout(args):
+    print(args)
+def terminate(args):
+    print(args)
 
 actions = { 
     'login':login,
@@ -53,16 +53,14 @@ actions = {
 
 running = True
 while running:
-    s = input()
-    print(s)
+    args = input().split()
 
 
-    callable = actions.get(s)
+    callable = actions.get(args[0])
     if callable is None:
         print("I didnt understand the request")
     else:
-        callable()
+        callable(args[1:])
 
 
-print("hello")
 
