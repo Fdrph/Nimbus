@@ -9,7 +9,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Bind socket to port
 server_address = ('localhost', 58000)
-print("stating up on: %s port: %s" % server_address)
+print("starting up on: %s port: %s" % server_address)
 sock.bind(server_address)
 
 print('listening...')
