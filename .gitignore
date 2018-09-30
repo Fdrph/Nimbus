@@ -32,7 +32,7 @@
 *.out
 *.app
 
-
+*.txt
 
 
 ### VisualStudioCode ###

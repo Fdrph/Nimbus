@@ -16,77 +16,133 @@ parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Ser
 args = vars(parser.parse_args())
 
 # debug
-print(args)
+# print(args)
 
 # Create socket TCP/IP
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+except OSError as e:
+    print("Unexpected System Call error: "+  e.strerror + "\nExiting Cloud Backup..")
+    exit()
 
-# Bind socket to port
-server_address = ('localhost', args["csport"])
-# server_address = (args["csname"], args["csport"])
-print("connecting to: %s port: %d" % server_address)
-sock.connect(server_address)
+# Connect to server
+server_address = (args["csname"], args["csport"])
+print("connecting to central server: %s port: %d" % server_address)
+try:
+    sock.connect(server_address)
+except OSError as e:
+    print ("Unexpected System Call error: " + e.strerror + "\nExiting Cloud Backup..")
+    exit()
+    
+
+username = ''
+password = ''
+
+
+
+def send_to_cs(msg):
+    """ Sends a message to the central server and returns the response 
+        
+        receives a string with a null "\\0" character 
+        
+        returns a string
+    """
+    print("sending: " + msg)
+    sock.sendall(msg.encode('utf-8'))
+
+    msg = b''
+    while True:
+        slic = sock.recv(16)
+        msg += slic
+        if msg.find(b'\x00') != -1:
+            break
+
+    print("response: " + msg.decode('utf-8'))
+    return msg.decode('utf-8')
+
+
+def authenticate(user, passwd):
+    response = send_to_cs("AUT"+" "+user+" "+passwd+"\0")
+    return response.split()[-1]
+
+
+
+    
+
+def deluser(args):
+    print(args)
+    # if authe
+    # print(username+" "+password)
+
+
+
+def backup(args):
+    print(args)
+
+
+def restore(args):
+    print(args)
+
+
+def dirlist(args):
+    print(args)
+
+
+def filelist(args):
+    print(args)
+
+
+def delete(args):
+    print(args)
+
+
+def logout(args):
+    print(args)
+
+
+def terminate(args):
+
+    exit()
+    print(args)
 
 
 def login(args):
+    print(args)
+    if len(args) < 2:
+        print("Missing username and password..")
+        return
 
-    #mandar msg para CS
+    response = authenticate(args[0], args[1])
+    print(response)
 
-    # Send data
-    message = "AUT"+" "+args[0]+" "+args[1]
-    print("sending: {!r}".format(message))
-    sock.sendall(message)
+    global username
+    username = args[0]
+    global password 
+    password = args[1]
 
-    # Look for the response
-    amount_received = 0
-    amount_expected = len(message)
+    actions = { 
+        'deluser':deluser,
+        'backup':backup,
+        'restore':restore,
+        'dirlist':dirlist,
+        'filelist':filelist,
+        'delete':delete,
+        'logout':logout,
+        'exit':terminate 
+    }
 
-    while amount_received < amount_expected:
-        data = sock.recv(16)
-        amount_received += len(data)
-        print("received: {!r}".format(data))
-    
-    print(args)
-def deluser(args):
-    print(args)
-def backup(args):
-    print(args)
-def restore(args):
-    print(args)
-def dirlist(args):
-    print(args)
-def filelist(args):
-    print(args)
-def delete(args):
-    print(args)
-def logout(args):
-    print(args)
-def terminate(args):
-    print(args)
-
-actions = { 
-    'login':login,
-    'deluser':deluser,
-    'backup':backup,
-    'restore':restore,
-    'dirlist':dirlist,
-    'filelist':filelist,
-    'delete':delete,
-    'logout':logout,
-    'exit':terminate 
-}
+    while True:
+        args = input().split()
+        callable = actions.get(args[0])
+        if callable is None:
+            print("I didnt understand the request..")
+        else:
+            callable(args[1:])
 
 
-running = True
-while running:
-    args = input().split()
-
-
-    callable = actions.get(args[0])
-    if callable is None:
-        print("I didnt understand the request")
+while True:
+    init = input().split()
+    if init[0] == 'login':
+        login(init[1:])
     else:
-        callable(args[1:])
-
-
-
+        print("I didnt understand the request..")

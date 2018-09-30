@@ -23,24 +23,82 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 # Bind socket to port
 
 local_hostname = socket.gethostname()
-server_address = ("localhost", args["csport"])
-#server_address = (socket.gethostbyname(local_hostname), args["csport"])
+# server_address = (socket.gethostbyname(local_hostname), args["csport"])
+server_address = ('localhost', args["csport"])
 print("starting up on: %s port: %s" % server_address)
 sock.bind(server_address)
 
-print('listening...')
 # Listen for incoming connections
+print('listening...')
 sock.listen(1)
 
+# Accept conection
+client_sck, client_address = sock.accept()
+print('Accepting conection from: ', client_address)
 
 
+# deals with an AUT request
+# checks users file, responds
+def aut(args):
+    # print(args)
+    # message to send back
+    aur = b'AUR '
+    
+    with open("users.txt", 'a+') as f:
+        f.seek(0)
+        users = [value.split() for value in f.readlines()]
+        f.read()
+        nouser = True
+        for value in users:
+            if value == args:
+                # user exists and password is correct
+                aur += b' OK\x00'
+                nouser = False
+                print("User: " + args[0])
+                break
+            elif value[0] == args[0]:
+                # user exists password is wrong
+                aur += b' NOK\x00'
+                nouser = False
+                break
+        
+        if nouser:
+            #create user in file and return AUR NEW
+            aur += b' NEW\x00'
+            f.write(args[0]+' '+args[1]+'\n')
+            print("New user: " + args[0])
+        
+    # print(users)
+    # print(aur)
+    
+    client_sck.sendall(aur)
+
+actions = { 
+    'AUT':aut
+    }
+
+def deal_with_message(msg):
+    args = msg.split()
+    callable = actions.get(args[0]) # AUT user pass
+    callable(args[1:]) # aut( [user,pass] )
+   
+
+
+
+# Main Loop to user
+msg = b''
 while True:
-    # Accept conection
-    connection, client_address = sock.accept()
+    slic = client_sck.recv(16)
+    # when remote end is closed and there is no more data the string is empty so we exit loop
+    if not slic: break
+    msg += slic
+    if msg.find(b'\x00') != -1:
+        message = msg.strip(b'\x00').decode('utf-8')
+        # do something with message
+        deal_with_message(message)
+        msg = b''
+    # n/a
 
-    print('Accepting conection from: ', client_address)
 
-
-    while True:
-            data = connection.recv(16)
-            print('received {!r}'.format(data))
+sock.close()
+print("Exiting Cloud Backup central server...")
