@@ -13,34 +13,40 @@ import argparse
 parser = argparse.ArgumentParser(description='User Server')
 parser.add_argument('-n', '--csname', default='localhost', help='Central Server name')
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
-args = vars(parser.parse_args())
+input_args = vars(parser.parse_args())
 
 # debug
 # print(args)
 
-# Create socket TCP/IP
-try:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-except OSError as e:
-    print("Unexpected System Call error: "+  e.strerror + "\nExiting Cloud Backup..")
-    exit()
+# creates socket and returns it
+def create_socket(args):
+    print(args)
+    # Create socket TCP/IP
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except OSError as e:
+        print("Unexpected System Call error: "+  e.strerror + "\nExiting Cloud Backup..")
+        exit()
 
-# Connect to server
-server_address = (args["csname"], args["csport"])
-print("connecting to central server: %s port: %d" % server_address)
-try:
-    sock.connect(server_address)
-except OSError as e:
-    print ("Unexpected System Call error: " + e.strerror + "\nExiting Cloud Backup..")
-    exit()
-    
+    # Connect to server
+    server_address = (args["csname"], args["csport"])
+    print("connecting to central server: %s port: %d" % server_address)
+    try:
+        sock.connect(server_address)
+    except OSError as e:
+        print ("Unexpected System Call error: " + e.strerror + "\nExiting Cloud Backup..")
+        exit()
+
+    return sock
+
+
 
 username = ''
 password = ''
 
 
 
-def send_to_cs(msg):
+def send_to_cs(msg, sock):
     """ Sends a message to the central server and returns the response 
         
         receives a string with a null "\\0" character 
@@ -61,8 +67,8 @@ def send_to_cs(msg):
     return msg.decode('utf-8')
 
 
-def authenticate(user, passwd):
-    response = send_to_cs("AUT"+" "+user+" "+passwd+"\0")
+def authenticate(user, passwd, sock):
+    response = send_to_cs("AUT"+" "+user+" "+passwd+"\0", sock)
     return response.split()[-1]
 
 
@@ -71,6 +77,11 @@ def authenticate(user, passwd):
 
 def deluser(args):
     print(args)
+
+    #conect to server
+    #authenticate
+    # amnda coisas comandos
+    #sock.close
     # if authe
     # print(username+" "+password)
 
@@ -112,8 +123,14 @@ def login(args):
         print("Missing username and password..")
         return
 
-    response = authenticate(args[0], args[1])
+    global input_args
+    sock = create_socket(input_args)
+
+
+    response = authenticate(args[0], args[1], sock)
     print(response)
+    #close conection
+    sock.close()
 
     global username
     username = args[0]

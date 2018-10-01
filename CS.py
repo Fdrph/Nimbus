@@ -36,6 +36,12 @@ sock.listen(1)
 client_sck, client_address = sock.accept()
 print('Accepting conection from: ', client_address)
 
+#while True:
+    #client_sck, client_address = sock.accept()
+    #try:
+        #thread.start_new_thread( main, (client_sck, client_address) )
+    #except:
+        #print "Error: unable to start thread"
 
 # deals with an AUT request
 # checks users file, responds
