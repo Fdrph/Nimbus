@@ -8,7 +8,6 @@ import argparse
 # 
 # group 8
 
-
 # Argument Parser for CSname and CSport
 parser = argparse.ArgumentParser(description='User Server')
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
@@ -16,6 +15,27 @@ args = vars(parser.parse_args())
 
 # debug
 print(args)
+
+# Create a UDP socket
+sock1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+server_address = ('localhost', 58000)
+message = b'This is the message.'
+
+try:
+
+    # Send data
+    print('sending...')
+    sent = sock1.sendto(message, server_address)
+
+    # Receive response
+    print('waiting to receive....')
+    data, server = sock1.recvfrom(4096)
+    print('received {!r}'.format(data))
+
+finally:
+    print('closing socket')
+    sock1.close()
 
 #Create socket TCP/IP
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
