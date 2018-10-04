@@ -43,3 +43,4 @@
 !.vscode/extensions.json
 
 cloud-backup.code-workspace
+.vscode/launch.json

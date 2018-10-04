@@ -12,30 +12,29 @@ import argparse
 parser = argparse.ArgumentParser(description='User Server')
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
 args = vars(parser.parse_args())
-
 # debug
-print(args)
+# print(args)
 
-# Create a UDP socket
-sock1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+# # Create a UDP socket
+# sock1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-server_address = ('localhost', 58000)
-message = b'This is the message.'
+# server_address = ('localhost', 58000)
+# message = b'This is the message.'
 
-try:
+# try:
 
-    # Send data
-    print('sending...')
-    sent = sock1.sendto(message, server_address)
+#     # Send data
+#     print('sending...')
+#     sent = sock1.sendto(message, server_address)
 
-    # Receive response
-    print('waiting to receive....')
-    data, server = sock1.recvfrom(4096)
-    print('received {!r}'.format(data))
+#     # Receive response
+#     print('waiting to receive....')
+#     data, server = sock1.recvfrom(4096)
+#     print('received {!r}'.format(data))
 
-finally:
-    print('closing socket')
-    sock1.close()
+# finally:
+#     print('closing socket')
+#     sock1.close()
 
 #Create socket TCP/IP
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -78,19 +77,19 @@ def aut(args):
         for value in users:
             if value == args:
                 # user exists and password is correct
-                aur += b' OK\x00'
+                aur += b' OK\n'
                 nouser = False
                 print("User: " + args[0])
                 break
             elif value[0] == args[0]:
                 # user exists password is wrong
-                aur += b' NOK\x00'
+                aur += b' NOK\n'
                 nouser = False
                 break
         
         if nouser:
             #create user in file and return AUR NEW
-            aur += b' NEW\x00'
+            aur += b' NEW\n'
             f.write(args[0]+' '+args[1]+'\n')
             print("New user: " + args[0])
         
@@ -118,8 +117,8 @@ while True:
     # when remote end is closed and there is no more data the string is empty so we exit loop
     if not slic: break
     msg += slic
-    if msg.find(b'\x00') != -1:
-        message = msg.strip(b'\x00').decode('utf-8')
+    if msg.find(b'\n') != -1:
+        message = msg.strip(b'\n').decode('utf-8')
         # do something with message
         deal_with_message(message)
         msg = b''

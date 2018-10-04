@@ -8,29 +8,38 @@ import argparse
 # 
 # group 8
 
+# Global variables storing the currently loged in user's
+# username and password
+username = ''
+password = ''
 
 # Argument Parser for CSname and CSport
 parser = argparse.ArgumentParser(description='User Server')
 parser.add_argument('-n', '--csname', default='localhost', help='Central Server name')
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
-input_args = vars(parser.parse_args())
-
+cmd_line_args = vars(parser.parse_args())
 # debug
 # print(args)
 
-# creates socket and returns it
-def create_socket(args):
-    print(args)
-    # Create socket TCP/IP
+
+def create_tcp_socket(server_info):
+    """ Creates a TCP socket and returns it
+
+    server_info is a dictionary:
+        csname: server host name
+        csport: server port
+
+    """
+    # Create socket TCP
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     except OSError as e:
         print("Unexpected System Call error: "+  e.strerror + "\nExiting Cloud Backup..")
         exit()
 
-    # Connect to server
-    server_address = (args["csname"], args["csport"])
-    print("connecting to central server: %s port: %d" % server_address)
+    # Connect to server provided in parameter
+    server_address = (server_info["csname"], server_info["csport"])
+    print("connecting to server: %s port: %d" % server_address)
     try:
         sock.connect(server_address)
     except OSError as e:
@@ -41,26 +50,23 @@ def create_socket(args):
 
 
 
-username = ''
-password = ''
-
-
-
-def send_to_cs(msg, sock):
-    """ Sends a message to the central server and returns the response 
+def send_msg_sock(msg, sock):
+    """ Sends a message to the socket provided and returns the response 
         
-        receives a string with a null "\\0" character 
+        sends and receives a string with a newline "\\n" character
+        to delimit end of message
         
         returns a string
     """
     print("sending: " + msg)
+    msg += '\n'
     sock.sendall(msg.encode('utf-8'))
-
+    
     msg = b''
     while True:
         slic = sock.recv(16)
         msg += slic
-        if msg.find(b'\x00') != -1:
+        if msg.find(b'\n') != -1:
             break
 
     print("response: " + msg.decode('utf-8'))
@@ -68,13 +74,10 @@ def send_to_cs(msg, sock):
 
 
 def authenticate(user, passwd, sock):
-    response = send_to_cs("AUT"+" "+user+" "+passwd+"\0", sock)
+    response = send_msg_sock("AUT"+" "+user+" "+passwd, sock)
     return response.split()[-1]
 
-
-
-    
-
+  
 def deluser(args):
     print(args)
 
@@ -112,13 +115,17 @@ def delete(args):
 
 
 def logout(args):
-    print(args)
+    global username
+    username = ''
+    global password 
+    password = ''
+
+    return True
 
 
 def terminate(args):
 
     exit()
-    print(args)
 
 
 def login(args):
@@ -127,14 +134,15 @@ def login(args):
         print("Missing username and password..")
         return
 
-    global input_args
-    sock = create_socket(input_args)
+    global cmd_line_args
+    sock = create_tcp_socket(cmd_line_args)
 
 
     response = authenticate(args[0], args[1], sock)
-    print(response)
-    #close conection
-    sock.close()
+    sock.close() # close conection
+    if response not in ['OK','NEW']:
+        return
+
 
     global username
     username = args[0]
@@ -158,12 +166,14 @@ def login(args):
         if callable is None:
             print("I didnt understand the request..")
         else:
-            callable(args[1:])
+            if callable(args[1:]):  break
 
 
 while True:
     init = input().split()
     if init[0] == 'login':
         login(init[1:])
+    elif init[0] == 'exit':
+        exit()
     else:
-        print("I didnt understand the request..")
+        print("You need to login first!")
