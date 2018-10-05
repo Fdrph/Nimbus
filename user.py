@@ -51,12 +51,10 @@ def create_tcp_socket(server_info):
 
 
 def send_msg_sock(msg, sock):
-    """ Sends a message to the socket provided and returns the response 
+    """ Sends a message to the socket provided and returns the response as a string
         
         sends and receives a string with a newline "\\n" character
         to delimit end of message
-        
-        returns a string
     """
     print("sending: " + msg)
     msg += '\n'
@@ -70,27 +68,52 @@ def send_msg_sock(msg, sock):
             break
 
     print("response: " + msg.decode('utf-8'))
-    return msg.decode('utf-8')
+    return msg.decode('utf-8').rstrip('\n')
 
 
 def authenticate(user, passwd, sock):
-    response = send_msg_sock("AUT"+" "+user+" "+passwd, sock)
-    return response.split()[-1]
+    """ sends an AUT with user and passwd provided
+        
+        receives the AUR response and returns the second
+        field of it: [OK, NOK, NEW, ERR]
+    """
+    response = send_msg_sock("AUT"+" "+user+" "+passwd, sock).split()[-1]
+
+    if response == 'NOK':
+        print('The password entered is incorrect')
+        return False
+    if response == 'NEW':
+        print('New user has been created')
+        return True
+    if response == 'OK':
+        print('Login was successful')
+        return True
+    else:
+        print('Could not login: ' + response)
+        return False
 
   
-def deluser(args):
-    print(args)
+def deluser(args, credentials, server_info):
 
-    #conect to server
-    #authenticate
-    # amnda coisas comandos
-    #sock.close
-    # if authe
-    # print(username+" "+password)
+    sock = create_tcp_socket(server_info)
+
+    if not authenticate(credentials['user'], credentials['password'], sock):
+        sock.close()
+        return
+
+    response = send_msg_sock('DLU', sock)
+    if response == 'DLR NOK':
+        print('User deletion not successful: User still has information stored')
+    elif response == 'DLR OK':
+        print('User deletion successful')
+    else:
+        print('Unexpected answer: ' + response)
+
+    sock.close()
 
 
 
-def backup(args):
+def backup(args, credentials, server_info):
 	#check if dir is listed already in backup_list.txt 
 	#if yes check BS_list.txt and ask for the files stored 
 	#return files to be updated and the IP and Port of the BS that have the files
@@ -98,56 +121,77 @@ def backup(args):
     print(args)
 
 
-def restore(args):
+def restore(args, credentials, server_info):
     print(args)
 
 
-def dirlist(args):
-    print(args)
+def dirlist(args, credentials, server_info):
+    
+    sock = create_tcp_socket(server_info)
+
+    if not authenticate(credentials['user'], credentials['password'], sock):
+        sock.close()
+        return
 
 
-def filelist(args):
-    print(args)
+    response = send_msg_sock('LSD', sock)
+    print(response)
+
+    sock.close()
 
 
-def delete(args):
-    print(args)
+def filelist(args, credentials, server_info):
+    
+    sock = create_tcp_socket(server_info)
+
+    if not authenticate(credentials['user'], credentials['password'], sock):
+        sock.close()
+        return
+
+    response = send_msg_sock('LSF '+args[0], sock)
+    print(response)
+
+    sock.close()
 
 
-def logout(args):
-    global username
-    username = ''
-    global password 
-    password = ''
+def delete(args, credentials, server_info):
 
-    return True
+    sock = create_tcp_socket(server_info)
+
+    if not authenticate(credentials['user'], credentials['password'], sock):
+        sock.close()
+        return
+
+    response = send_msg_sock('DEL '+args[0], sock)
+    if response == 'DDR OK':
+        print('Deletion request was successful')
+    elif response == 'DDR NOK':
+        print('Deletion request was unsuccessful')
+
+    sock.close()
 
 
-def terminate(args):
 
+def terminate(args, credentials={}, server_info={}):
+    print('Exiting Cloud Backup..')
     exit()
 
 
-def login(args):
-    print(args)
+def login(args, server_info):
+
     if len(args) < 2:
-        print("Missing username and password..")
+        print('Missing username and password!')
         return
 
-    global cmd_line_args
-    sock = create_tcp_socket(cmd_line_args)
+    credentials = {"user": args[0], "password": args[1]}
 
+    sock = create_tcp_socket(server_info)
 
-    response = authenticate(args[0], args[1], sock)
-    sock.close() # close conection
-    if response not in ['OK','NEW']:
+    if not authenticate(credentials["user"], credentials["password"], sock):
+        sock.close()
         return
+    sock.close()
 
-
-    global username
-    username = args[0]
-    global password 
-    password = args[1]
 
     actions = { 
         'deluser':deluser,
@@ -156,24 +200,29 @@ def login(args):
         'dirlist':dirlist,
         'filelist':filelist,
         'delete':delete,
-        'logout':logout,
         'exit':terminate 
     }
 
     while True:
+        print('> ', end='')
         args = input().split()
         callable = actions.get(args[0])
-        if callable is None:
+        if args[0] == 'logout':
+            break
+        elif callable is None:
             print("I didnt understand the request..")
         else:
-            if callable(args[1:]):  break
+            if callable(args[1:], credentials, cmd_line_args):  break
 
 
+
+
+actions = { 'login':login, 'exit':terminate }
 while True:
+    print('> ', end='')
     init = input().split()
-    if init[0] == 'login':
-        login(init[1:])
-    elif init[0] == 'exit':
-        exit()
-    else:
+    callable = actions.get(init[0])
+    if callable is None:
         print("You need to login first!")
+    else:
+        callable(init[1:], cmd_line_args)
