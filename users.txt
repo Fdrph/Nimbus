@@ -1,3 +1,0 @@
-user pass
-user23 pass
-a 12

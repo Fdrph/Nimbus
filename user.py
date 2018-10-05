@@ -183,6 +183,10 @@ def login(args, server_info):
         print('Missing username and password!')
         return
 
+    if not args[0].isdigit() or not len(args[0]) == 5 or not args[1].isalnum():
+        print('User needs to be a 5 digit number and password alphanumeric!')
+        return 
+
     credentials = {"user": args[0], "password": args[1]}
 
     sock = create_tcp_socket(server_info)

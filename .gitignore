@@ -33,6 +33,7 @@
 *.app
 
 *.txt
+users.txt
 
 
 ### VisualStudioCode ###
