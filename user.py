@@ -62,7 +62,7 @@ def send_msg_sock(msg, sock):
     
     msg = b''
     while True:
-        slic = sock.recv(16)
+        slic = sock.recv(1024)
         msg += slic
         if msg.find(b'\n') != -1:
             break
