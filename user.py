@@ -114,10 +114,10 @@ def deluser(args, credentials, server_info):
 
 
 def backup(args, credentials, server_info):
-	#check if dir is listed already in backup_list.txt 
-	#if yes check BS_list.txt and ask for the files stored 
-	#return files to be updated and the IP and Port of the BS that have the files
-	
+    #check if dir is listed already in backup_list.txt 
+    #if yes check BS_list.txt and ask for the files stored 
+    #return files to be updated and the IP and Port of the BS that have the files
+    
     print(args)
 
 
