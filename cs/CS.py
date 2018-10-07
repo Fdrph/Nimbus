@@ -21,59 +21,109 @@ cmd_line_args = vars(parser.parse_args())
 sel = selectors.DefaultSelector()
 registered_BS = [] # registered backup servers online
 logged_in_users = set()
+global last_login
 last_login = ()
 
 # deals with an AUT request
 # checks users file, responds
-def aut(args, user_socket):
+def aut(args, user_socket, cred):
     # print(args)
     # message to send back
     response = b'AUR '
+    success = False
     username = args[0]
     password = args[1]
-    
-    with open("user_list.txt", 'a+') as f:
-        f.seek(0)
-        users = [value.split() for value in f.readlines()]
-        f.read()
-        nouser = True
-        for value in users:
-            if value == args:
-                # user exists and password is correct
+    filename = 'user_'+username+'.txt'
+
+    if os.path.isfile(filename):
+        # user exists
+        with open(filename, 'r+') as f:
+            if f.read() == password:
+                # user exists and pass is correct
                 response += b' OK\n'
-                nouser = False
                 print("User: " + username)
-                # logged_in_users.add((username,password))
-                global last_login
-                last_login = (username, password)
-                break
-            elif value[0] == username:
-                # user exists password is wrong
+                success = True
+            else:
+                # user exists and pass is wrong
                 response += b' NOK\n'
-                nouser = False
-                break
-        
-        if nouser:
-            #create user in file and return AUR NEW
-            response += b' NEW\n'
-            f.write(username+' '+password+'\n')
-            os.mkdir(os.path.realpath('')+'/user_'+username)
-            print("New user: " + username)
-            # logged_in_users.add((username,password))
-            global last_login
-            last_login = (username, password)
+    else:
+        # user doesnt exist yet
+        with open(filename, 'w+') as f:   f.write(password)
+        os.mkdir(os.path.realpath('')+'/user_'+username)
+        response += b' NEW\n'
+        print("New user: " + username)
+        success = True
 
         
     # print(users)
     # print(response)
     
     user_socket.sendall(response)
+    return success
 
-# deals with a delete user request
-def dlu(args, user_socket):
+# deals with a deluser request
+def dlu(args, user_socket, cred):
     print('DLU')
-    print(last_login)
+    print(cred)
+
+    try:
+        userdir = '/user_'+cred[0]
+        if os.listdir('.'+userdir):
+            # folder not empty
+            user_socket.sendall(b'DLR NOK\n')
+            return
+        # folder empty
+
+        os.remove('user_'+cred[0]+'.txt')
+        os.rmdir('.'+userdir)
+    except OSError:
+        print('Couldnt create modify or delete files in current folder. Check permissions')
+        exit()
+    
     user_socket.sendall(b'DLR OK\n')
+
+#deals with a dirlist request
+def lsd(args, user_socket, cred):
+    print('LSD')
+    print(cred)
+
+    dirlist = os.listdir('.'+'/user_'+cred[0])
+    if not dirlist:
+        # dir is empty
+        user_socket.sendall(b'LDR 0\n')
+        return
+    else:
+        #dir is not empty
+        m = 'LDR '+str(len(dirlist))+' '
+        m += ' '.join(dirlist)
+        user_socket.sendall(m.encode('utf-8')+b'\n')
+
+
+    
+
+#deals with a filelist request
+def lsf(args, user_socket, cred):
+    print('LSF')
+    print(cred)
+    user_socket.sendall(b'LFD OK\n')
+
+#deals with a delete request
+def delete(args, user_socket, cred):
+    print('DEL')
+    print(cred)
+    user_socket.sendall(b'DDR OK\n')
+
+# #deals with a backup request
+# def bck(args, user_socket, cred):
+#     print('BCK')
+#     print(cred)
+#     user_socket.sendall(b'BKK OK\n')
+
+# #deals with a restore request
+# def rst(args, user_socket, cred):
+#     print('RST')
+#     print(cred)
+#     user_socket.sendall(b'BKK OK\n')
 
 # get tcp message until \n is found
 def get_msg(sock):
@@ -81,32 +131,40 @@ def get_msg(sock):
     while True:
         try:
             slic = sock.recv(1024)
-            # print(slic)
-            msg += slic
-            if msg.find(b'\n') != -1:
+            if not slic: 
+                msg = b''
                 break
-        except socket.error:
-            continue
+            msg += slic
+            if msg.find(b'\n') != -1: break
+        except socket.error as e:
+            print(e)
+            exit()
     return msg.decode('utf-8').rstrip('\n')
 
 # TCP session with user
 def tcp_session(sock, udp_sock):
     sel.unregister(sock)
-    sock.setblocking(True) 
-    message = get_msg(sock)    
+    sock.setblocking(True)
 
-    
-    actions = { 
+    cred = ()
+
+    actions = {
     'AUT':aut,
-    'DLU':dlu
+    'DLU':dlu,
+    'LSD':lsd,
+    'LSF':lsf,
+    'DEL':delete
     }
-    args = message.split()
-    callable = actions.get(args[0]) # AUT user pass
-    callable(args[1:], sock) # aut( [user,pass] )
- 
+    while True:
+        message = get_msg(sock)
+        if not message: break
+        args = message.split()
+        callable = actions.get(args[0])
+        if callable(args[1:], sock, cred):
+            cred = (args[1], args[2])
+
 
     print('closing ', sock.getsockname())
-
     sock.close()
 
 def tcp_accept(sock):
