@@ -65,10 +65,10 @@ def register_with_cs():
 	return True
 
 if not register_with_cs():
-	print("Couldn't register with central server")
+	print("Couldn't register with central server!")
 	exit()
 else:
-	print("Registered sucessfully with central server")
+	print("Registered sucessfully with central server!")
 
 
 # UDP
@@ -89,9 +89,20 @@ sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
 
 
 def sig_handler(sig, frame):
+    sel.unregister(udp_sock)
+    udp_sock.setblocking(True)
+
+    snd = 'UNR '+hostname+' '+str(cmd_line_args['bsport'])+'\n'
+    udp_sock.sendto(snd.encode('UTF-8'), (cmd_line_args['csname'], cmd_line_args['csport']) )
+    msg = udp_sock.recv(1024).decode('UTF-8').rstrip('\n')
+    # print(msg)
+    if msg != 'UAR OK':
+        print("Couldn't unregister with central server!")
+
     udp_sock.close()
+    sel.unregister(tcp_sock)
     tcp_sock.close()
-    print("Exiting Backup server...")
+    print("\nExiting Backup server...")
     exit()
 signal.signal(signal.SIGINT, sig_handler)
 

@@ -100,7 +100,9 @@ def deluser(args, credentials, server_info):
     if not authenticate(credentials['user'], credentials['password'], sock):
         sock.close()
         return
+    sock.close()
 
+    sock = create_tcp_socket(server_info)
     response = send_msg_sock('DLU', sock)
     if response == 'DLR NOK':
         print('User deletion not successful: User still has information stored')

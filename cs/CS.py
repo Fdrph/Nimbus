@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import socket
 import sys
-# import multiprocessing
+import os
 import argparse
 import time
 import signal
@@ -20,15 +20,19 @@ cmd_line_args = vars(parser.parse_args())
 
 sel = selectors.DefaultSelector()
 registered_BS = [] # registered backup servers online
+logged_in_users = set()
+last_login = ()
 
 # deals with an AUT request
 # checks users file, responds
 def aut(args, user_socket):
     # print(args)
     # message to send back
-    aur = b'AUR '
+    response = b'AUR '
+    username = args[0]
+    password = args[1]
     
-    with open("users.txt", 'a+') as f:
+    with open("user_list.txt", 'a+') as f:
         f.seek(0)
         users = [value.split() for value in f.readlines()]
         f.read()
@@ -36,98 +40,74 @@ def aut(args, user_socket):
         for value in users:
             if value == args:
                 # user exists and password is correct
-                aur += b' OK\n'
+                response += b' OK\n'
                 nouser = False
-                print("User: " + args[0])
+                print("User: " + username)
+                # logged_in_users.add((username,password))
+                global last_login
+                last_login = (username, password)
                 break
-            elif value[0] == args[0]:
+            elif value[0] == username:
                 # user exists password is wrong
-                aur += b' NOK\n'
+                response += b' NOK\n'
                 nouser = False
                 break
         
         if nouser:
             #create user in file and return AUR NEW
-            aur += b' NEW\n'
-            f.write(args[0]+' '+args[1]+'\n')
-            print("New user: " + args[0])
+            response += b' NEW\n'
+            f.write(username+' '+password+'\n')
+            os.mkdir(os.path.realpath('')+'/user_'+username)
+            print("New user: " + username)
+            # logged_in_users.add((username,password))
+            global last_login
+            last_login = (username, password)
+
         
     # print(users)
-    # print(aur)
+    # print(response)
     
-    user_socket.sendall(aur)
+    user_socket.sendall(response)
 
+# deals with a delete user request
+def dlu(args, user_socket):
+    print('DLU')
+    print(last_login)
+    user_socket.sendall(b'DLR OK\n')
 
-
-def deal_with_message(msg, user_socket):
-    actions = { 
-    'AUT':aut
-    }
-    args = msg.split()
-    callable = actions.get(args[0]) # AUT user pass
-    callable(args[1:], user_socket) # aut( [user,pass] )
-   
-# Child process that handles communications with a user that connected
-def deal_with_user(user_socket, user_address, udp_sock):
-    data, server = udp_sock.recvfrom(1024)
-    print('received {!r}'.format(data))
-    print('THIS IS FROM ANOTHER PROCESS')
-    time.sleep(5)
-
-    # Main Loop to user
+# get tcp message until \n is found
+def get_msg(sock):
     msg = b''
     while True:
-        slic = user_socket.recv(1024)
-        # when remote end is closed and there is no more data the string is empty so we exit loop
-        if not slic: break
-        msg += slic
-        if msg.find(b'\n') != -1:
-            message = msg.strip(b'\n').decode('utf-8')
-            # do something with message
-            deal_with_message(message, user_socket)
-            msg = b''
-
-
-    print('remote end is closed so closing user_socket')
-    user_socket.close()
-
-
-# Child process that handles UDP messages to BSs
-def deal_with_bs(cmd_line_args, udp_sock):
-    print('')
-
-    def sig_handler(sig, frame):
-        print("Exiting UDP child process -> SIGINT...")
-        exit()
-    signal.signal(signal.SIGINT, sig_handler)
-
-    data, server = udp_sock.recvfrom(1024)
-    print('received {!r}'.format(data))
-
-# def rcv_message(sock):
-#     msg = b''
-#     while True:
-#         try:
-#             slic = sock.recv(20)
-#             print(slic)
-#             msg += slic
-#             if msg.find(b'\n') != -1:
-#                 break
-#         except socket.error:
-#             continue
-
-#     return msg.decode('utf-8').rstrip('\n')
+        try:
+            slic = sock.recv(1024)
+            # print(slic)
+            msg += slic
+            if msg.find(b'\n') != -1:
+                break
+        except socket.error:
+            continue
+    return msg.decode('utf-8').rstrip('\n')
 
 # TCP session with user
 def tcp_session(sock, udp_sock):
-    data, addr = sock.recvfrom(1024)
-    if data:
-        print('received ', repr(data))
-        sock.sendall(b'AUR OK\n')
-    else:
-        print('closing ', sock.getsockname())
-        sel.unregister(sock)
-        sock.close()
+    sel.unregister(sock)
+    sock.setblocking(True) 
+    message = get_msg(sock)    
+
+    
+    actions = { 
+    'AUT':aut,
+    'DLU':dlu
+    }
+    args = message.split()
+    callable = actions.get(args[0]) # AUT user pass
+    callable(args[1:], sock) # aut( [user,pass] )
+ 
+
+    print('closing ', sock.getsockname())
+
+    sock.close()
 
 def tcp_accept(sock):
     connection, client_address = sock.accept()
@@ -136,19 +116,30 @@ def tcp_accept(sock):
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
 
-# Handles BS registration
+# Handles BS registration and unregistration
 def udp_rgr(udp_sock):
     msg, addr = udp_sock.recvfrom(1024)
     msg = msg.decode('utf-8').rstrip('\n').split()
-    if msg[0] == 'REG' and msg[1:] not in registered_BS:
-        registered_BS.append([msg[1],msg[2]])
-        udp_sock.sendto(b'RGR OK\n', addr)
-        print('+BS: '+msg[1]+' '+msg[2])
-    elif msg[0] == 'REG':
-        udp_sock.sendto(b'RGR NOK\n', addr)
-    else:
-        udp_sock.sendto(b'RGR ERR\n', addr)
+    if len(msg) < 3: return
+    if msg[0] == 'REG':
+        if msg[1:] not in registered_BS:
+            registered_BS.append([msg[1],msg[2]])
+            udp_sock.sendto(b'RGR OK\n', addr)
+            print('+BS: '+msg[1]+' '+msg[2])
+        else:
+            udp_sock.sendto(b'RGR NOK\n', addr)
+    elif msg[0] == 'UNR':
+        if msg[1:] in registered_BS:
+            registered_BS.remove(msg[1:])
+            # print(registered_BS)
+            print('-BS: '+msg[1]+' '+msg[2])
+            udp_sock.sendto(b'UAR OK\n', addr)
+        else:
+            udp_sock.sendto(b'UAR NOK\n', addr)
 
+
+    # else:
+    #     udp_sock.sendto(b'RGR ERR\n', addr)
 
 
 
@@ -188,59 +179,3 @@ while True:
 
 
 
-
-
-
-
-
-# if __name__ == '__main__':
-    
-#     # Create a UDP socket
-#     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-#     server_address = ('localhost', cmd_line_args['csport'])
-#     udp_sock.bind(server_address)
-
-#     # data, server = sock1.recvfrom(1024)
-#     # print('received {!r}'.format(data))
-
-
-#     # Create socket TCP/IP to listen to users
-#     tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-#     local_hostname = socket.gethostname()
-#     # server_address = (socket.gethostbyname(local_hostname), cmd_line_args["csport"])
-#     server_address = ('localhost', cmd_line_args['csport'])
-#     print("starting up on: %s port: %s" % server_address)
-
-#     # Bind socket to port
-#     tcp_sock.bind(server_address)
-
-#     # Listen for incoming connections from users
-#     print('listening...')
-#     tcp_sock.listen(1)  
-    
-    
-#     processes = []
-
-#     def sig_handler(sig, frame):
-#         print("Exiting Cloud Backup central server...")
-#         for p in processes:
-#             p.join()
-#         tcp_sock.close()
-#         # delete BS file here
-#         exit()
-#     signal.signal(signal.SIGINT, sig_handler)
-
-#     pbs = multiprocessing.Process(target=deal_with_bs, args=(cmd_line_args, udp_sock,))
-#     processes.append(pbs)
-#     pbs.start()
-#     while True:
-#         # Accept conection from user
-#         client_sck, client_address = tcp_sock.accept()
-#         print('Accepting conection from: ', client_address)
-
-#         p = multiprocessing.Process(target=deal_with_user, args=(client_sck, client_address, udp_sock,))
-#         processes.append(p)
-#         p.start()
-    
