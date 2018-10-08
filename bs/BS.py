@@ -47,6 +47,7 @@ def udp_cs(sock):
     msg = b''
     try:
         msg = sock.recv(1024)
+        print(msg)
     except socket.error:
         print('ERROR_SOCKET_UDP_RECEIVE')
         sock.close()
@@ -59,7 +60,8 @@ def udp_cs(sock):
     'LSF':lsf
     }
     while True:
-        message = get_msg(sock)
+        #message = get_msg(sock)
+        
         if not message: break
         args = message.split()
         callable = actions.get(args[0])
@@ -98,7 +100,8 @@ else:
 
 # UDP
 udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-cs_addr = (cmd_line_args['csname'], cmd_line_args['csport'])
+addr = (cmd_line_args['csname'], cmd_line_args['bsport'])
+udp_sock.bind( addr )
 udp_sock.setblocking(False)
 sel.register(udp_sock, selectors.EVENT_READ, udp_cs)
 

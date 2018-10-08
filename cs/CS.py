@@ -108,9 +108,15 @@ def lsf(args, user_socket, cred):
     with open(path) as f:
         ip = f.read().split()
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        addr = (ip[0], ip[1])
+        addr = (ip[0], int(ip[1]))
+        print(addr)
         cmd = 'LSF '+cred[0]+' '+args[0]+'\n'
-        udp_sock.sendto(cmd.encode('utf-8'), addr)
+        try:
+            udp_sock.sendto(cmd.encode('utf-8'), addr)
+        except:
+            udp_sock.close()
+            exit()
+        udp_sock.close()
         #falar com bs
         #bs retorna filelist
         #dar esta filelist ao user
@@ -226,7 +232,7 @@ tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_address = ('localhost', cmd_line_args['csport'])
 tcp_sock.bind(server_address)
 print('listening...')
-tcp_sock.listen()
+tcp_sock.listen(1)
 tcp_sock.setblocking(False)
 sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
 
