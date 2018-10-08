@@ -99,12 +99,23 @@ def lsd(args, user_socket, cred):
         user_socket.sendall(m.encode('utf-8')+b'\n')
 
 
-    
-
 #deals with a filelist request
 def lsf(args, user_socket, cred):
     print('LSF')
-    print(cred)
+    print(args)
+
+    path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]+'/IP_port.txt'
+    with open(path) as f:
+        ip = f.read().split()
+        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        addr = (ip[0], ip[1])
+        cmd = 'LSF '+cred[0]+' '+args[0]+'\n'
+        udp_sock.sendto(cmd.encode('utf-8'), addr)
+        #falar com bs
+        #bs retorna filelist
+        #dar esta filelist ao user
+        print(f.read())
+
     user_socket.sendall(b'LFD OK\n')
 
 #deals with a delete request

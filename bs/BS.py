@@ -37,11 +37,36 @@ def tcp_accept(sock):
     connection.setblocking(False)
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
+
+def lsf(args, sock):
+    print(args)
+
+
+# handles udp requests from cs
 def udp_cs(sock):
-	print('')
+    msg = b''
+    try:
+        msg = sock.recv(1024)
+    except socket.error:
+        print('ERROR_SOCKET_UDP_RECEIVE')
+        sock.close()
+        exit()
 
 
+    msg.decode('utf-8').rstrip('\n')
 
+    actions = {
+    'LSF':lsf
+    }
+    while True:
+        message = get_msg(sock)
+        if not message: break
+        args = message.split()
+        callable = actions.get(args[0])
+        callable(args[1:], sock)
+
+
+    print(msg)
 
 
 
@@ -88,6 +113,8 @@ tcp_sock.setblocking(False)
 sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
 
 
+# Receives ctrl^C and sends unregister
+# request to CS, exits afterwards
 def sig_handler(sig, frame):
     sel.unregister(udp_sock)
     udp_sock.setblocking(True)
