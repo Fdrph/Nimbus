@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 import socket
 import sys
+import os
+import time
 import argparse
 import signal
 import selectors
@@ -37,10 +39,21 @@ def tcp_accept(sock):
     connection.setblocking(False)
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
-
+# list files in dir provided in args
+# args: ['user'. 'directory']
 def lsf(args, sock, addr):
-    print(args)
-    sock.sendto(b'LFD NOK\n', addr)
+
+    path = os.getcwd()+'/user_'+args[0]+'/'+args[1]
+    files = os.listdir(path)
+    msg = 'LFD '+str(len(files))+' '
+    for file in files:
+        filepath = path+'/'+file
+        size = str(os.path.getsize(filepath))
+        date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.gmtime(os.path.getmtime(filepath)) )
+        msg += ' '.join([file,date_time,size]) + ' '
+
+    msg += '\n'
+    sock.sendto(msg.encode('UTF-8'), addr)
 
 
 # handles udp requests from cs
@@ -68,22 +81,23 @@ def udp_cs(sock):
 
 
 def register_with_cs():
-    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     cs_addr = (cmd_line_args['csname'], cmd_line_args['csport'])
-
     rgr = "REG " + hostname + ' ' + str(cmd_line_args['bsport']) + '\n'
+    
     try:
+        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        udp_sock.settimeout(2)
         udp_sock.sendto(rgr.encode('UTF-8'), cs_addr)
-    except socket.error:
-        udp_sock.close()
+        status = udp_sock.recv(1024).decode('UTF-8')
+    except OSError as e:
+        print('Error Description: '+str(e))
         return False
-
-    status = udp_sock.recv(1024)
-    # print(status)
-    if status.decode('UTF-8').split()[1] != 'OK':
+    finally:
         udp_sock.close()
+    
+    if status.split()[1] != 'OK':
         return False
-    udp_sock.close()
+   
     return True
 
 if not register_with_cs():
@@ -106,7 +120,7 @@ tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_address = ('localhost', cmd_line_args['bsport'])
 tcp_sock.bind(server_address)
 print('listening for users...')
-tcp_sock.listen()
+tcp_sock.listen(1)
 tcp_sock.setblocking(False)
 sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
 

@@ -108,23 +108,27 @@ def lsf(args, user_socket, cred):
     if not os.path.exists(path):
         user_socket.sendall(b'LFD NOK\n')
         return
-
     with open(path) as f:
-        ip = f.read().split()
+        bs_ip = f.read().split()
     
     cmd = 'LSF '+cred[0]+' '+args[0]+'\n'
     try:
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp_sock.sendto(cmd.encode('utf-8'), (ip[0], int(ip[1])) )
+        udp_sock.settimeout(1)
+        udp_sock.sendto(cmd.encode('utf-8'), (bs_ip[0], int(bs_ip[1])) )
         msg, info = udp_sock.recvfrom(8192)
-    except:
+    except OSError:
+        user_socket.sendall(b'LFD NOK\n')
+        return
+    finally:
         udp_sock.close()
-        exit()
-    udp_sock.close()
     
-    print(msg)
+    msg = msg.decode('UTF-8').split()
+    msg.insert(2, ' '.join(bs_ip))
+    msg = ' '.join(msg) + '\n'
+    # print(msg)
 
-    user_socket.sendall(msg)
+    user_socket.sendall(msg.encode('UTF-8'))
 
 #deals with a delete request
 def delete(args, user_socket, cred):
@@ -222,21 +226,23 @@ def udp_rgr(udp_sock):
 
 
 print("Server starting up on: %s port: %s" % ('localhost', cmd_line_args['csport']))
-# UDP
-udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udp_sock.bind( ('localhost', cmd_line_args['csport']) )
-udp_sock.setblocking(False)
-sel.register(udp_sock, selectors.EVENT_READ, udp_rgr)
-
-# TCP
-tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# server_address = (socket.gethostbyname(socket.gethostname()), cmd_line_args["csport"])
-server_address = ('localhost', cmd_line_args['csport'])
-tcp_sock.bind(server_address)
-print('listening...')
-tcp_sock.listen(1)
-tcp_sock.setblocking(False)
-sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
+try:
+    ip =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
+    # UDP socket for bs registration
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.bind( ('localhost', cmd_line_args['csport']) )
+    udp_sock.setblocking(False)
+    sel.register(udp_sock, selectors.EVENT_READ, udp_rgr)
+    # TCP for user connections
+    tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # tcp_sock.bind((ip, cmd_line_args['csport']))
+    tcp_sock.bind(('localhost', cmd_line_args['csport']))
+    tcp_sock.listen(1)
+    tcp_sock.setblocking(False)
+    sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
+except OSError as e:
+    print('Error starting the server: '+ str(e))
+    exit()
 
 def sig_handler(sig, frame):
     udp_sock.close()
@@ -245,6 +251,7 @@ def sig_handler(sig, frame):
     exit()
 signal.signal(signal.SIGINT, sig_handler)
 
+print('listening...')
 while True:
     events = sel.select()
     for key, mask in events:

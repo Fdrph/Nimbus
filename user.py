@@ -137,11 +137,12 @@ def dirlist(args, credentials, server_info):
         sock.close()
         return
 
-
-    response = send_msg_sock('LSD', sock)
-    print(response)
-
+    response = send_msg_sock('LSD', sock).split()
     sock.close()
+    if response[1] == '0':
+        print('There are no directories to list')
+        return
+    print(' '.join(response[2:]))
 
 
 def filelist(args, credentials, server_info):
@@ -152,10 +153,17 @@ def filelist(args, credentials, server_info):
         sock.close()
         return
 
-    response = send_msg_sock('LSF '+args[0], sock)
-    print(response)
-
+    res = send_msg_sock('LSF '+args[0], sock).split()
     sock.close()
+
+    if res[1] == 'NOK':
+        print("Folder doesn't exist")
+        return
+
+    print('BS: '+' '.join(res[2:4])+'\n')
+    res = res[4:]
+    for i in range(0,len(res),4):
+        print(res[i]+' '+res[i+1]+' '+res[i+2]+' '+res[i+3])
 
 
 def delete(args, credentials, server_info):
