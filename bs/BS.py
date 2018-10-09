@@ -38,34 +38,29 @@ def tcp_accept(sock):
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
 
-def lsf(args, sock):
+def lsf(args, sock, addr):
     print(args)
+    sock.sendto(b'LFD NOK\n', addr)
 
 
 # handles udp requests from cs
 def udp_cs(sock):
-    msg = b''
-    try:
-        msg = sock.recv(1024)
-        print(msg)
-    except socket.error:
-        print('ERROR_SOCKET_UDP_RECEIVE')
-        sock.close()
-        exit()
-
-
-    msg.decode('utf-8').rstrip('\n')
+    
 
     actions = {
     'LSF':lsf
     }
-    while True:
-        #message = get_msg(sock)
-        
-        if not message: break
-        args = message.split()
-        callable = actions.get(args[0])
-        callable(args[1:], sock)
+    msg = b''
+    try:
+        msg, addr = sock.recvfrom(8192)
+    except socket.error:
+        print('ERROR_SOCKET_UDP_RECEIVE')
+        sock.close()
+        exit()
+    msg = msg.decode('utf-8').rstrip('\n')
+    args = msg.split()
+    callable = actions.get(args[0])
+    callable(args[1:], sock, addr)
 
 
     print(msg)
@@ -73,29 +68,29 @@ def udp_cs(sock):
 
 
 def register_with_cs():
-	udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	cs_addr = (cmd_line_args['csname'], cmd_line_args['csport'])
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    cs_addr = (cmd_line_args['csname'], cmd_line_args['csport'])
 
-	rgr = "REG " + hostname + ' ' + str(cmd_line_args['bsport']) + '\n'
-	try:
-		udp_sock.sendto(rgr.encode('UTF-8'), cs_addr)
-	except socket.error:
-		udp_sock.close()
-		return False
+    rgr = "REG " + hostname + ' ' + str(cmd_line_args['bsport']) + '\n'
+    try:
+        udp_sock.sendto(rgr.encode('UTF-8'), cs_addr)
+    except socket.error:
+        udp_sock.close()
+        return False
 
-	status = udp_sock.recv(1024)
-	# print(status)
-	if status.decode('UTF-8').split()[1] != 'OK':
-		udp_sock.close()
-		return False
-	udp_sock.close()
-	return True
+    status = udp_sock.recv(1024)
+    # print(status)
+    if status.decode('UTF-8').split()[1] != 'OK':
+        udp_sock.close()
+        return False
+    udp_sock.close()
+    return True
 
 if not register_with_cs():
-	print("Couldn't register with central server!")
-	exit()
+    print("Couldn't register with central server!")
+    exit()
 else:
-	print("Registered sucessfully with central server!")
+    print("Registered sucessfully with central server!")
 
 
 # UDP

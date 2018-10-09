@@ -105,24 +105,26 @@ def lsf(args, user_socket, cred):
     print(args)
 
     path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]+'/IP_port.txt'
+    if not os.path.exists(path):
+        user_socket.sendall(b'LFD NOK\n')
+        return
+
     with open(path) as f:
         ip = f.read().split()
+    
+    cmd = 'LSF '+cred[0]+' '+args[0]+'\n'
+    try:
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        addr = (ip[0], int(ip[1]))
-        print(addr)
-        cmd = 'LSF '+cred[0]+' '+args[0]+'\n'
-        try:
-            udp_sock.sendto(cmd.encode('utf-8'), addr)
-        except:
-            udp_sock.close()
-            exit()
+        udp_sock.sendto(cmd.encode('utf-8'), (ip[0], int(ip[1])) )
+        msg, info = udp_sock.recvfrom(8192)
+    except:
         udp_sock.close()
-        #falar com bs
-        #bs retorna filelist
-        #dar esta filelist ao user
-        print(f.read())
+        exit()
+    udp_sock.close()
+    
+    print(msg)
 
-    user_socket.sendall(b'LFD OK\n')
+    user_socket.sendall(msg)
 
 #deals with a delete request
 def delete(args, user_socket, cred):
