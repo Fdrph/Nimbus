@@ -2,6 +2,8 @@
 import socket
 import sys
 import argparse
+import os
+import time
 
 # Redes de Computadores 2018
 # Cloud Backup using sockets
@@ -63,6 +65,9 @@ def send_msg_sock(msg, sock):
     msg = b''
     while True:
         slic = sock.recv(1024)
+        if not slic:
+            print('Cloud Backup Server has disconnected!')
+            exit()
         msg += slic
         if msg.find(b'\n') != -1:
             break
@@ -118,11 +123,32 @@ def deluser(args, credentials, server_info):
 
 
 def backup(args, credentials, server_info):
-    #check if dir is listed already in backup_list.txt 
-    #if yes check BS_list.txt and ask for the files stored 
-    #return files to be updated and the IP and Port of the BS that have the files
-    
-    print(args)
+
+    sock = create_tcp_socket(server_info)
+    if not authenticate(credentials['user'], credentials['password'], sock):
+        sock.close()
+        return
+
+    path = os.getcwd()+'/'+args[0]
+    try:
+        files = os.listdir(path)
+    except OSError:
+        print('Directory does not exist')
+        return
+    if not files:
+        print('Directory is empty')
+        return
+
+    msg = 'BCK '+args[0]+' '+str(len(files))+' '
+    for file in files:
+        filepath = path+'/'+file
+        size = str(os.path.getsize(filepath))
+        date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.gmtime(os.path.getmtime(filepath)) )
+        msg += ' '.join([file,date_time,size]) + ' '
+
+    response = send_msg_sock(msg, sock).split()
+    sock.close()
+    print(response)
 
 
 def restore(args, credentials, server_info):
@@ -167,21 +193,21 @@ def filelist(args, credentials, server_info):
 
 
 def delete(args, credentials, server_info):
-
+    if len(args) < 1:
+        print('Must provide a folder to delete')
+        return
+    
     sock = create_tcp_socket(server_info)
-
     if not authenticate(credentials['user'], credentials['password'], sock):
         sock.close()
         return
 
     response = send_msg_sock('DEL '+args[0], sock)
+    sock.close()
     if response == 'DDR OK':
         print('Deletion request was successful')
     elif response == 'DDR NOK':
         print('Deletion request was unsuccessful')
-
-    sock.close()
-
 
 
 def terminate(args, credentials={}, server_info={}):

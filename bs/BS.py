@@ -6,6 +6,7 @@ import time
 import argparse
 import signal
 import selectors
+import shutil
 
 # Redes de Computadores 2018
 # Cloud Backup using sockets
@@ -19,7 +20,9 @@ parser.add_argument('-n', '--csname', default='localhost', help='Central Server 
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
 cmd_line_args = vars(parser.parse_args())
 
-hostname =  socket.gethostbyname(socket.gethostname())
+
+# hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
+hostname = '127.0.0.1'
 sel = selectors.DefaultSelector()
 
 # TCP session with user
@@ -39,6 +42,8 @@ def tcp_accept(sock):
     connection.setblocking(False)
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
+
+
 # list files in dir provided in args
 # args: ['user'. 'directory']
 def lsf(args, sock, addr):
@@ -56,27 +61,61 @@ def lsf(args, sock, addr):
     sock.sendto(msg.encode('UTF-8'), addr)
 
 
+# handles add user to list from cs
+def lsu(args, sock, addr):
+    print('LSU: '+str(args))
+    username = args[0]
+    password = args[1]
+    filename = 'user_'+username+'.txt'
+
+    if os.path.isfile(filename):
+        # user exists
+        sock.sendto(b'LUR NOK\n', addr)
+    else:
+        # user doesnt exist yet
+        with open(filename, 'w+') as f:   f.write(password)
+        os.mkdir(os.path.realpath('')+'/user_'+username)
+        print("New user: " + username)
+        sock.sendto(b'LUR OK\n', addr)
+
+
+# handles delete dir request from cs
+def dlb(args, sock, addr):
+
+    path = os.getcwd()+'/user_'+args[0]+'/'+args[1]
+    if not os.path.exists(path):
+        sock.sendto(b'DBR NOK\n', addr)
+        return
+    try:
+        shutil.rmtree(path, ignore_errors=True)
+        if not os.listdir(os.getcwd()+'/user_'+args[0]):
+            # empty
+            os.rmdir(os.getcwd()+'/user_'+args[0])
+            os.remove(os.getcwd()+'/user_'+args[0]+'.txt')
+        sock.sendto(b'DBR OK\n', addr)
+    except OSError:
+        sock.sendto(b'DBR NOK\n', addr)
+        return
+    
+
 # handles udp requests from cs
 def udp_cs(sock):
     
-
     actions = {
-    'LSF':lsf
+    'LSF':lsf,
+    'LSU':lsu,
+    'DLB':dlb
     }
     msg = b''
-    try:
-        msg, addr = sock.recvfrom(8192)
-    except socket.error:
-        print('ERROR_SOCKET_UDP_RECEIVE')
-        sock.close()
-        exit()
+    msg, addr = sock.recvfrom(8192)
     msg = msg.decode('utf-8').rstrip('\n')
     args = msg.split()
     callable = actions.get(args[0])
     callable(args[1:], sock, addr)
 
-
     print(msg)
+
+
 
 
 
@@ -109,7 +148,8 @@ else:
 
 # UDP
 udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-addr = (cmd_line_args['csname'], cmd_line_args['bsport'])
+# addr = (local ip, cmd_line_args['bsport'])
+addr = ('localhost', cmd_line_args['bsport'])
 udp_sock.bind( addr )
 udp_sock.setblocking(False)
 sel.register(udp_sock, selectors.EVENT_READ, udp_cs)
@@ -128,21 +168,23 @@ sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
 # Receives ctrl^C and sends unregister
 # request to CS, exits afterwards
 def sig_handler(sig, frame):
-    sel.unregister(udp_sock)
+    udp_sock.close()
+    tcp_sock.close()
     udp_sock.setblocking(True)
 
     snd = 'UNR '+hostname+' '+str(cmd_line_args['bsport'])+'\n'
-    udp_sock.sendto(snd.encode('UTF-8'), (cmd_line_args['csname'], cmd_line_args['csport']) )
-    msg = udp_sock.recv(1024).decode('UTF-8').rstrip('\n')
-    # print(msg)
-    if msg != 'UAR OK':
-        print("Couldn't unregister with central server!")
-
-    udp_sock.close()
-    sel.unregister(tcp_sock)
-    tcp_sock.close()
-    print("\nExiting Backup server...")
-    exit()
+    try:
+        t_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        t_sock.settimeout(0.5)
+        t_sock.sendto(snd.encode('UTF-8'), (cmd_line_args['csname'], cmd_line_args['csport']) )
+        msg = t_sock.recv(1024).decode('UTF-8').rstrip('\n')
+        if msg != 'UAR OK': print("\nCouldn't unregister with central server!")
+    except OSError:
+        print("\nCouldn't unregister with central server!")
+    finally:
+        t_sock.close()
+        print("\nExiting Backup server...")
+        exit()   
 signal.signal(signal.SIGINT, sig_handler)
 
 
