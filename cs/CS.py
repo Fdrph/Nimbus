@@ -87,8 +87,8 @@ def dlu(args, user_socket, cred):
 
 #deals with a backup request
 def bck(args, user_socket, cred):
-    print(args)
-    print(cred)
+    # print(args)
+    # print(cred)
 
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_sock.settimeout(2)
@@ -97,7 +97,7 @@ def bck(args, user_socket, cred):
     if not os.path.exists(path):
     # first time
         if not registered_BS:
-            print('not bs')
+            print('no bs')
             user_socket.sendall(b'BKR EOF\n')
             return
         bs_ip = random.choice(registered_BS)
@@ -117,7 +117,8 @@ def bck(args, user_socket, cred):
             user_socket.sendall(b'BKR EOF\n')
             return
         resp = 'BKR '+' '.join(bs_ip)+' '+args[1]+' '+' '.join(args[2:])+'\n'
-        # print(resp)
+        with open(path, 'w+') as f: f.write(bs_ip[0]+' '+bs_ip[1])
+        user_socket.sendall(resp.encode())
     else:
     # dir has been backed up before
         with open(path) as f:
@@ -135,12 +136,34 @@ def bck(args, user_socket, cred):
         if msg[1] == 'NOK':
             print('nok answer')
             user_socket.sendall(b'BKR EOF\n')
-            return
-        print(msg)        
-        # Check which files are newer and which havent been backed up yet here
+            return    
+
+        args = args[2:]
+        msg = msg[2:]
+        # print(msg)
+        print('dir as been backed up before')
+
+        final_list = []
+        for i in range(0,len(args),4):
+            file = args[i:i+4]
+            # print(file)
+            if file[0] in msg:
+                # file already backed up, check dates
+                i = msg.index(file[0])
+                prev_file = msg[i:i+4]
+                file_t = time.strptime(' '.join(file[1:3]), "%d.%m.%Y %H:%M:%S")
+                prev_file_t = time.strptime(' '.join(prev_file[1:3]), "%d.%m.%Y %H:%M:%S")
+                if prev_file_t >= file_t:   continue
+            final_list.append(file)
+
+        final_list = [' '.join(x) for x in final_list]    
+        # print(final_list)
+        resp = 'BKR '+' '.join(bs_ip)+' '+str(len(final_list))+' '+' '.join(final_list)+'\n'
+        print(resp)
         
-        resp = 'BKR EOF\n'   
-    user_socket.sendall(resp.encode())
+        # resp = 'BKR EOF\n'
+        user_socket.sendall(resp.encode())
+    
 
 
 
