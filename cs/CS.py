@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(description='User Server')
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
 cmd_line_args = vars(parser.parse_args())
 
-
+hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
 sel = selectors.DefaultSelector()
 registered_BS = [] # registered backup servers online
 logged_in_users = set()
@@ -280,7 +280,7 @@ def get_msg(sock):
     return msg.decode().rstrip('\n')
 
 # TCP session with user
-def tcp_session(sock, udp_sock):
+def tcp_session(sock):
     sel.unregister(sock)
     sock.setblocking(True)
 
@@ -301,7 +301,7 @@ def tcp_session(sock, udp_sock):
         args = message.split()
         callable = actions.get(args[0])
         if callable is None:
-            udp_sock.sendall(b'ERR\n')
+            sock.sendall(b'ERR\n')
             break
         if callable(args[1:], sock, cred):
             cred = (args[1], args[2])
@@ -347,16 +347,16 @@ def udp_rgr(udp_sock):
 
 print("Server starting up on: %s port: %s" % ('localhost', cmd_line_args['csport']))
 try:
-    ip =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
     # UDP socket for bs registration
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_sock.bind( ('localhost', cmd_line_args['csport']) )
+    udp_sock.bind( (hostname, cmd_line_args['csport']) )
+    # udp_sock.bind( ('localhost', cmd_line_args['csport']) )
     udp_sock.setblocking(False)
     sel.register(udp_sock, selectors.EVENT_READ, udp_rgr)
     # TCP for user connections
     tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # tcp_sock.bind((ip, cmd_line_args['csport']))
-    tcp_sock.bind(('localhost', cmd_line_args['csport']))
+    tcp_sock.bind((hostname, cmd_line_args['csport']))
+    # tcp_sock.bind(('localhost', cmd_line_args['csport']))
     tcp_sock.listen(1)
     tcp_sock.setblocking(False)
     sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
@@ -376,10 +376,4 @@ while True:
     events = sel.select()
     for key, mask in events:
         callback = key.data
-        if callback == tcp_session:
-            callback(key.fileobj, udp_sock)
-        else:
-            callback(key.fileobj)
-
-
-
+        callback(key.fileobj)

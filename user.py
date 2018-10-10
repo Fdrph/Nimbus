@@ -153,15 +153,40 @@ def backup(args, credentials, server_info):
 
 def restore(args, credentials, server_info):
     
+    # we ask the cs for bs ip and port
     sock = create_tcp_socket(server_info)
-
     if not authenticate(credentials['user'], credentials['password'], sock):
         sock.close()
         return
-
     response = send_msg_sock('RST '+args[0], sock).split()
     sock.close()
-    print(response)
+    if response[1] == 'EOF' or response[1] == 'ERR':
+        print("Cant restore this directory")
+        return
+    # now we talk to bs
+    bsname = response[1]
+    bsport = response[2]
+    bs_sock = create_tcp_socket({"csname":bsname, "csport":int(bsport)})
+    if not authenticate(credentials['user'], credentials['password'], bs_sock):
+        print("Couldn't authenticate with BS!")
+        bs_sock.close()
+        return
+    
+    tosend = 'RSB '+args[0]+'\n'
+    bs_sock.sendall(tosend.encode())
+    resp = b''
+    while True:
+        slic = bs_sock.recv(512)
+        if not slic:
+            break
+        resp += slic
+    # response = send_msg_sock('RSB '+args[0], bs_sock).split()
+    bs_sock.close()
+
+    print(resp)
+
+
+
 
 
 def dirlist(args, credentials, server_info):

@@ -21,20 +21,103 @@ parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Ser
 cmd_line_args = vars(parser.parse_args())
 
 
-# hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
-hostname = '127.0.0.1'
+hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
+# hostname = '127.0.0.1'
 sel = selectors.DefaultSelector()
 
+def aut(args, sock, cred):
+    response = b'AUR '
+    success = False
+    username = args[0]
+    password = args[1]
+    filename = 'user_'+username+'.txt'
+
+    if os.path.isfile(filename):
+        # user exists
+        with open(filename, 'r+') as f:
+            if f.read() == password:
+                # user exists and pass is correct
+                response += b' OK\n'
+                print("User: " + username)
+                success = True
+            else:
+                # user exists and pass is wrong
+                response += b' NOK\n'
+    # print(users)
+    # print(response)
+    
+    sock.sendall(response)
+    return success
+
+def upl(args, sock, cred):
+    print(args)
+
+
+def rsb(args, sock, cred):
+    print(args)
+    path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]
+    try:
+        files = os.listdir(path)
+    except OSError:
+        sock.sendall(b'RBR EOF\n')
+        return
+    resp = 'RBR '+str(len(files))+' '
+    resp = resp.encode()
+    for file in files:
+        filepath = path+'/'+file
+        size = str(os.path.getsize(filepath))
+        date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.gmtime(os.path.getmtime(filepath)) )
+        with open(filepath, 'rb') as f: data = f.read()
+        file_b = ' '.join([file,date_time,size])+' '
+        file_b = file_b.encode() + data
+        resp += file_b
+        # resp += b' '.join([file.encode(),date_time.encode(),size.encode(),data]) + b' '
+
+    resp += b'\n'
+    sock.sendall(resp)
+
+# get tcp message until \n is found
+def get_msg(sock):
+    msg = b''
+    while True:
+        try:
+            slic = sock.recv(1024)
+            if not slic: 
+                msg = b''
+                break
+            msg += slic
+            if msg.find(b'\n') != -1: break
+        except socket.error as e:
+            print(e)
+            exit()
+    return msg.decode().rstrip('\n')
+
 # TCP session with user
-def tcp_session(sock, udp_sock):
-    data, addr = sock.recvfrom(1024)
-    if data:
-        print('received ', repr(data))
-        sock.sendall(b'AUR OK\n')
-    else:
-        print('closing ', sock.getsockname())
-        sel.unregister(sock)
-        sock.close()
+def tcp_session(sock):
+    sel.unregister(sock)
+    sock.setblocking(True)
+
+    cred = ()
+
+    actions = {
+    'AUT':aut,
+    'UPL':upl,
+    'RSB':rsb,
+    }
+    while True:
+        message = get_msg(sock)
+        if not message: break
+        args = message.split()
+        callable = actions.get(args[0])
+        if callable is None:
+            sock.sendall(b'ERR\n')
+            break
+        if callable(args[1:], sock, cred):
+            cred = (args[1], args[2])
+
+
+    print('closing ', sock.getsockname())
+    sock.close()
 
 def tcp_accept(sock):
     connection, client_address = sock.accept()
@@ -145,25 +228,27 @@ if not register_with_cs():
 else:
     print("Registered sucessfully with central server!")
 
+try:
+    # UDP
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    addr = (hostname, cmd_line_args['bsport'])
+    # addr = ('localhost', cmd_line_args['bsport'])
+    udp_sock.bind( addr )
+    udp_sock.setblocking(False)
+    sel.register(udp_sock, selectors.EVENT_READ, udp_cs)
 
-# UDP
-udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-# addr = (local ip, cmd_line_args['bsport'])
-addr = ('localhost', cmd_line_args['bsport'])
-udp_sock.bind( addr )
-udp_sock.setblocking(False)
-sel.register(udp_sock, selectors.EVENT_READ, udp_cs)
-
-# TCP
-tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-# server_address = (hostname, cmd_line_args["csport"])
-server_address = ('localhost', cmd_line_args['bsport'])
-tcp_sock.bind(server_address)
-print('listening for users...')
-tcp_sock.listen(1)
-tcp_sock.setblocking(False)
-sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
-
+    # TCP
+    tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_address = (hostname, cmd_line_args["bsport"])
+    # server_address = ('localhost', cmd_line_args['bsport'])
+    tcp_sock.bind(server_address)
+    print('listening for users...')
+    tcp_sock.listen(1)
+    tcp_sock.setblocking(False)
+    sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)
+except OSError as e:
+    print('Error starting the server: '+ str(e))
+    exit()
 
 # Receives ctrl^C and sends unregister
 # request to CS, exits afterwards
@@ -192,7 +277,4 @@ while True:
     events = sel.select()
     for key, mask in events:
         callback = key.data
-        if callback == tcp_session:
-            callback(key.fileobj, udp_sock)
-        else:
-            callback(key.fileobj)
+        callback(key.fileobj)
