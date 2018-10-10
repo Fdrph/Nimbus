@@ -152,7 +152,16 @@ def backup(args, credentials, server_info):
 
 
 def restore(args, credentials, server_info):
-    print(args)
+    
+    sock = create_tcp_socket(server_info)
+
+    if not authenticate(credentials['user'], credentials['password'], sock):
+        sock.close()
+        return
+
+    response = send_msg_sock('RST '+args[0], sock).split()
+    sock.close()
+    print(response)
 
 
 def dirlist(args, credentials, server_info):

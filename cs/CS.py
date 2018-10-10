@@ -170,8 +170,16 @@ def bck(args, user_socket, cred):
 #deals with a restore request
 def rst(args, user_socket, cred):
     print('RST')
-    print(cred)
-    user_socket.sendall(b'BKK OK\n')
+
+    path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]+'/IP_port.txt'
+    if not os.path.exists(path):
+        user_socket.sendall(b'RSR EOF\n')
+        return
+    with open(path) as f:
+        bs_ip = f.read().split()
+
+    resp = 'RSR '+' '.join(bs_ip)+'\n'
+    user_socket.sendall(resp.encode())
 
 
 #deals with a dirlist request
