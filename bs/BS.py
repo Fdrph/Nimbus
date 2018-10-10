@@ -26,6 +26,14 @@ hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) f
 sel = selectors.DefaultSelector()
 
 def aut(args, sock, cred):
+    """ Authenticates user received in args.
+        username is args[0]. password is args[1]
+        
+        in: AUT user pass
+        
+        out: AUR OK or NOK
+    """
+
     response = b'AUR '
     success = False
     username = args[0]
@@ -50,10 +58,25 @@ def aut(args, sock, cred):
     return success
 
 def upl(args, sock, cred):
+    """ Receive backup of dir from user.
+        Receives files to backup and puts them in dir
+        
+        in: UPL dir N (filename date time size data)*
+        
+        out: UPR OK or NOK
+    """
+
     print(args)
 
 
 def rsb(args, sock, cred):
+    """ Restore dir to user.
+        Send files from directory args[0] to user
+        
+        in: RSB dir
+        
+        out: RBR N (filename date time size data)*
+    """
     print(args)
     path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]
     try:
@@ -66,18 +89,18 @@ def rsb(args, sock, cred):
     for file in files:
         filepath = path+'/'+file
         size = str(os.path.getsize(filepath))
-        date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.gmtime(os.path.getmtime(filepath)) )
+        date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(os.path.getmtime(filepath)) )
         with open(filepath, 'rb') as f: data = f.read()
         file_b = ' '.join([file,date_time,size])+' '
-        file_b = file_b.encode() + data
+        file_b = file_b.encode() + data + b' '
         resp += file_b
-        # resp += b' '.join([file.encode(),date_time.encode(),size.encode(),data]) + b' '
 
-    resp += b'\n'
+    # print(resp)
     sock.sendall(resp)
 
-# get tcp message until \n is found
+
 def get_msg(sock):
+    """ Get TCP message until \\n is found"""
     msg = b''
     while True:
         try:
@@ -127,10 +150,15 @@ def tcp_accept(sock):
 
 
 
-# list files in dir provided in args
-# args: ['user'. 'directory']
-def lsf(args, sock, addr):
 
+def lsf(args, sock, addr):
+    """ List files in dir to CS.
+        Send file list from directory args[1] to user args[0]
+        
+        in: LSF user dir
+        
+        out: LFD N (filename date time size)*
+    """
     path = os.getcwd()+'/user_'+args[0]+'/'+args[1]
     files = os.listdir(path)
     msg = 'LFD '+str(len(files))+' '
@@ -144,8 +172,13 @@ def lsf(args, sock, addr):
     sock.sendto(msg.encode('UTF-8'), addr)
 
 
-# handles add user to list from cs
 def lsu(args, sock, addr):
+    """ Adds user to current users in this server. Requested from CS.
+        
+        in: LSU user pass
+        
+        out: LUR OK or NOK or ERR
+    """
     print('LSU: '+str(args))
     username = args[0]
     password = args[1]
@@ -162,9 +195,15 @@ def lsu(args, sock, addr):
         sock.sendto(b'LUR OK\n', addr)
 
 
-# handles delete dir request from cs
-def dlb(args, sock, addr):
 
+def dlb(args, sock, addr):
+    """ Handles directory deletion request from CS.
+        Tries to delete directory args[1] for user args[0]
+        
+        in: DLB user dir
+        
+        out: DBR OK or NOK
+    """
     path = os.getcwd()+'/user_'+args[0]+'/'+args[1]
     if not os.path.exists(path):
         sock.sendto(b'DBR NOK\n', addr)

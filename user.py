@@ -121,6 +121,39 @@ def deluser(args, credentials, server_info):
     return success
 
 
+def save_files(data, directory):
+    path = os.getcwd()+'/'+directory
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    def rd_to_space(data):
+        val = ''
+        for byte in data:
+            if byte==32: break #32=space
+            val += chr(byte)
+        data = data[len(val)+1:] #remove what we read
+        # print(val)
+        return val, data
+
+    N, data = rd_to_space(data)
+    N = int(N)  #number of files
+    # FOR EACH FILE
+    for i in range(0, N):
+        filename, data = rd_to_space(data)
+        t1, data = rd_to_space(data)
+        t2, data = rd_to_space(data)
+        size, data = rd_to_space(data)
+        size = int(size)
+        file = data[:size]
+        with open(path+'/'+filename, 'wb') as f: f.write(file)
+        print(t1+' '+t2)
+        t = time.mktime(time.strptime(t1+' '+t2, '%d.%m.%Y %H:%M:%S'))
+        os.utime(path+'/'+filename, (t,t))
+        data = data[size+1:]
+
+
+    # print(data)
+
 
 def backup(args, credentials, server_info):
 
@@ -176,14 +209,17 @@ def restore(args, credentials, server_info):
     bs_sock.sendall(tosend.encode())
     resp = b''
     while True:
-        slic = bs_sock.recv(512)
-        if not slic:
-            break
+        slic = bs_sock.recv(8192)
         resp += slic
-    # response = send_msg_sock('RSB '+args[0], bs_sock).split()
+        if len(slic)<8192:
+            break
     bs_sock.close()
+    resp = resp[4:] # remove 'RGR '
+    save_files(resp, args[0])
 
-    print(resp)
+    # print(resp)
+
+
 
 
 
