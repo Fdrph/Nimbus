@@ -99,7 +99,14 @@ def authenticate(user, passwd, sock):
 
   
 def deluser(args, credentials, server_info):
+    """ Delete user from CS
+        Try to delete user from CS, user is deleted if no information is stored
+        for this user
 
+        out:    DLU
+
+        in:     DLR OK or NOK
+    """
     sock = create_tcp_socket(server_info)
 
     if not authenticate(credentials['user'], credentials['password'], sock):
@@ -156,36 +163,96 @@ def save_files(data, directory):
 
 
 def backup(args, credentials, server_info):
+    """ Backup directory.
+        Gets BS info and which files to send from CS. Uploads these files to BS
+        
+        out to cs:  BCK dir N (filename date time size)*
 
+        in:         BKR ipBS portBS N (filename date time size)*
+
+        out to bs:  UPL dir N (filename date time size data)*
+        
+        in:         UPR OK or NOK
+    """
+    directory = args[0]
+    # AUT with CS
     sock = create_tcp_socket(server_info)
     if not authenticate(credentials['user'], credentials['password'], sock):
         sock.close()
         return
 
-    path = os.getcwd()+'/'+args[0]
-    try:
-        files = os.listdir(path)
-    except OSError:
+    path = os.getcwd()+'/'+directory
+    if not os.path.isdir(path):
         print('Directory does not exist')
+        sock.close()
         return
+    files = os.listdir(path)
     if not files:
         print('Directory is empty')
+        socket.close()
         return
 
-    msg = 'BCK '+args[0]+' '+str(len(files))+' '
+    msg = 'BCK '+directory+' '+str(len(files))+' '
     for file in files:
         filepath = path+'/'+file
         size = str(os.path.getsize(filepath))
         date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.gmtime(os.path.getmtime(filepath)) )
         msg += ' '.join([file,date_time,size]) + ' '
 
+    # Ask CS for files to UPL
     response = send_msg_sock(msg, sock).split()
     sock.close()
-    print(response)
+    if response[1] == 'EOF':
+        print('BS responded with an error')
+        return
+    if response[3] == '0':
+        print('No more files need backup')
+        return
+    # print(response)
+    # Now we talk to BS
+    # AUT with BS
+    bs_sock = create_tcp_socket({"csname":response[1], "csport":int(response[2])})
+    if not authenticate(credentials['user'], credentials['password'], bs_sock):
+        sock.close()
+        return
+    files = [x for x in files if x in response]
+    tosend = 'UPL '+directory+' '+str(len(files))+' '
+    tosend = tosend.encode()
+    for file in files:
+        filepath = path+'/'+file
+        size = str(os.path.getsize(filepath))
+        date_time = time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(os.path.getmtime(filepath)) )
+        with open(filepath, 'rb') as f: data = f.read()
+        file_b = ' '.join([file,date_time,size])+' '
+        file_b = file_b.encode() + data + b' '
+        tosend += file_b
+    # print(tosend)
+    
+    bs_sock.sendall(tosend)
+    resp = bs_sock.recv(8192).decode().rstrip('\n')
+    if resp == 'UPR NOK':
+        print('Could not backup directory!')
+    else:
+        print('completed - '+directory+': ', end='')
+        [print(' '+x, end='') for x in files]
+        print()
+    bs_sock.close()
+
 
 
 def restore(args, credentials, server_info):
-    
+    """ Restore Directory.
+        Get BS info from CS, then get files from BS for dir provided
+        
+        out to cs:  RST dir
+
+        in:         RSR ipBS portBS
+
+        out to bs:  RSB dir
+        
+        in:         RBR N (filename date time size data)*
+    """
+
     # we ask the cs for bs ip and port
     sock = create_tcp_socket(server_info)
     if not authenticate(credentials['user'], credentials['password'], sock):
@@ -204,7 +271,7 @@ def restore(args, credentials, server_info):
         print("Couldn't authenticate with BS!")
         bs_sock.close()
         return
-    
+
     tosend = 'RSB '+args[0]+'\n'
     bs_sock.sendall(tosend.encode())
     resp = b''
@@ -214,6 +281,10 @@ def restore(args, credentials, server_info):
         if len(slic)<8192:
             break
     bs_sock.close()
+    # print(resp)
+    if resp == b'RBR EOF\n':
+        print("Couldn't receive files from BS!")
+        return
     resp = resp[4:] # remove 'RGR '
     save_files(resp, args[0])
 
@@ -226,7 +297,12 @@ def restore(args, credentials, server_info):
 
 
 def dirlist(args, credentials, server_info):
-    
+    """ List all directories.
+        
+        out to cs:  LSD
+
+        in:         LDR N (dirname)*
+    """
     sock = create_tcp_socket(server_info)
 
     if not authenticate(credentials['user'], credentials['password'], sock):
@@ -242,7 +318,12 @@ def dirlist(args, credentials, server_info):
 
 
 def filelist(args, credentials, server_info):
-    
+    """ List all files in directory.
+        
+        out:    LSF dir
+
+        in:     LFD BSip BSport N (filename date time size)*
+    """
     sock = create_tcp_socket(server_info)
 
     if not authenticate(credentials['user'], credentials['password'], sock):
@@ -263,6 +344,12 @@ def filelist(args, credentials, server_info):
 
 
 def delete(args, credentials, server_info):
+    """ Delete specified folder
+        
+        out:    DEL dir
+
+        in:     DDR OK or NOK
+    """
     if len(args) < 1:
         print('Must provide a folder to delete')
         return

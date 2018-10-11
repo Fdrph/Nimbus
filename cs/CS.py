@@ -117,6 +117,7 @@ def bck(args, user_socket, cred):
             user_socket.sendall(b'BKR EOF\n')
             return
         resp = 'BKR '+' '.join(bs_ip)+' '+args[1]+' '+' '.join(args[2:])+'\n'
+        os.mkdir(os.getcwd()+'/user_'+cred[0]+'/'+args[0])
         with open(path, 'w+') as f: f.write(bs_ip[0]+' '+bs_ip[1])
         user_socket.sendall(resp.encode())
     else:

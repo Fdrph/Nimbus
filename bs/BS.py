@@ -24,6 +24,8 @@ cmd_line_args = vars(parser.parse_args())
 hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
 # hostname = '127.0.0.1'
 sel = selectors.DefaultSelector()
+# credentials
+cred = ()
 
 def aut(args, sock, cred):
     """ Authenticates user received in args.
@@ -33,7 +35,7 @@ def aut(args, sock, cred):
         
         out: AUR OK or NOK
     """
-
+    # args = args.decode().rstrip('\n').split()
     response = b'AUR '
     success = False
     username = args[0]
@@ -57,7 +59,41 @@ def aut(args, sock, cred):
     sock.sendall(response)
     return success
 
-def upl(args, sock, cred):
+def save_files(data, user):
+
+
+    def rd_to_space(data):
+        val = ''
+        for byte in data:
+            if byte==32: break #32=space
+            val += chr(byte)
+        data = data[len(val)+1:] #remove what we read
+        # print(val)
+        return val, data
+
+    directory, data = rd_to_space(data)
+    path = os.getcwd()+'/user_'+user+'/'+directory
+    if not os.path.exists(path): os.mkdir(path)
+
+    print(directory+':')
+    N, data = rd_to_space(data)
+    N = int(N)  #number of files
+    # FOR EACH FILE
+    for i in range(0, N):
+        filename, data = rd_to_space(data)
+        t1, data = rd_to_space(data)
+        t2, data = rd_to_space(data)
+        size, data = rd_to_space(data)
+        size = int(size)
+        file = data[:size]
+        with open(path+'/'+filename, 'wb') as f: f.write(file)
+        # print(t1+' '+t2)
+        t = time.mktime(time.strptime(t1+' '+t2, '%d.%m.%Y %H:%M:%S'))
+        os.utime(path+'/'+filename, (t,t))
+        data = data[size+1:]
+        print(filename+' '+str(size)+' Bytes received')
+
+def upl(sock, cred):
     """ Receive backup of dir from user.
         Receives files to backup and puts them in dir
         
@@ -65,8 +101,22 @@ def upl(args, sock, cred):
         
         out: UPR OK or NOK
     """
+    # username = cred[0]
+    # print(cred)
+    # print('----------------------')
+    msg = b''
+    while True:
+        try:
+            slic = sock.recv(65535)
+        except BlockingIOError:
+            break
+        # print(slic)
+        if not slic: break
+        msg += slic
 
-    print(args)
+    save_files(msg, cred[0])
+
+    sock.sendall(b'UPR OK\n')
 
 
 def rsb(args, sock, cred):
@@ -77,8 +127,9 @@ def rsb(args, sock, cred):
         
         out: RBR N (filename date time size data)*
     """
-    print(args)
-    path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]
+    username = cred[0]
+    args = args.decode().rstrip('\n').split()
+    path = os.getcwd()+'/user_'+username+'/'+args[0]
     try:
         files = os.listdir(path)
     except OSError:
@@ -106,41 +157,52 @@ def get_msg(sock):
         try:
             slic = sock.recv(1024)
             if not slic: 
-                msg = b''
                 break
             msg += slic
             if msg.find(b'\n') != -1: break
         except socket.error as e:
             print(e)
             exit()
-    return msg.decode().rstrip('\n')
+    return msg
 
 # TCP session with user
 def tcp_session(sock):
-    sel.unregister(sock)
-    sock.setblocking(True)
+    # sel.unregister(sock)
+    # sock.setblocking(True)
 
-    cred = ()
+    global cred
 
-    actions = {
-    'AUT':aut,
-    'UPL':upl,
-    'RSB':rsb,
-    }
+
     while True:
-        message = get_msg(sock)
-        if not message: break
-        args = message.split()
-        callable = actions.get(args[0])
-        if callable is None:
+        msg = b''
+        try:
+            cmd = sock.recv(4)
+        except BlockingIOError:
+            continue
+        print(cmd)
+        if cmd == b'UPL ':
+            upl(sock, cred)
+            sel.unregister(sock)
+            sock.close()
+            return
+        
+        while True:
+            slic = sock.recv(8192)
+            msg += slic
+            if msg.find(b'\n') != -1: break
+        if cmd == b'RSB ':
+            rsb(msg, sock, cred)
+            sel.unregister(sock)
+            sock.close()
+            return
+        if cmd == b'AUT ':
+            msg = msg.decode().rstrip('\n').split()
+            if aut(msg,sock,cred): cred = (msg[0], msg[1])
+        else:
             sock.sendall(b'ERR\n')
-            break
-        if callable(args[1:], sock, cred):
-            cred = (args[1], args[2])
+            sock.close()
 
-
-    print('closing ', sock.getsockname())
-    sock.close()
+    # print('closing ', sock.getsockname())
 
 def tcp_accept(sock):
     connection, client_address = sock.accept()
