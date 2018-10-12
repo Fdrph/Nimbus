@@ -24,6 +24,7 @@ cmd_line_args = vars(parser.parse_args())
 hostname =  [(s.connect(('10.255.255.255', 1)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]
 # hostname = '127.0.0.1'
 sel = selectors.DefaultSelector()
+
 # credentials
 cred = ()
 
@@ -35,7 +36,6 @@ def aut(args, sock, cred):
         
         out: AUR OK or NOK
     """
-    # args = args.decode().rstrip('\n').split()
     response = b'AUR '
     success = False
     username = args[0]
@@ -53,29 +53,31 @@ def aut(args, sock, cred):
             else:
                 # user exists and pass is wrong
                 response += b' NOK\n'
-    # print(users)
-    # print(response)
     
     sock.sendall(response)
     return success
 
-def save_files(data, user):
-
-
+def save_files(sock, data, user):
+    """ Auxiliary to upl() that parses data and gets filenames and fileinfo, then parses
+        their bytes and saves them into a file on disk
+    """
     def rd_to_space(data):
         val = ''
         for byte in data:
             if byte==32: break #32=space
             val += chr(byte)
         data = data[len(val)+1:] #remove what we read
-        # print(val)
         return val, data
 
     directory, data = rd_to_space(data)
     path = os.getcwd()+'/user_'+user+'/'+directory
-    if not os.path.exists(path): os.mkdir(path)
+    try:
+        if not os.path.exists(path): os.mkdir(path)
+    except:
+        sock.sendall(b'UPR NOK\n')
+        return
 
-    print(directory+':')
+    print('Receiving '+directory+':')
     N, data = rd_to_space(data)
     N = int(N)  #number of files
     # FOR EACH FILE
@@ -86,12 +88,16 @@ def save_files(data, user):
         size, data = rd_to_space(data)
         size = int(size)
         file = data[:size]
-        with open(path+'/'+filename, 'wb') as f: f.write(file)
-        # print(t1+' '+t2)
-        t = time.mktime(time.strptime(t1+' '+t2, '%d.%m.%Y %H:%M:%S'))
-        os.utime(path+'/'+filename, (t,t))
+        try:
+            with open(path+'/'+filename, 'wb') as f: f.write(file)
+            t = time.mktime(time.strptime(t1+' '+t2, '%d.%m.%Y %H:%M:%S'))
+            os.utime(path+'/'+filename, (t,t))
+        except OSError:
+            sock.sendall(b'UPR NOK\n')
+            return
         data = data[size+1:]
         print(filename+' '+str(size)+' Bytes received')
+        sock.sendall(b'UPR OK\n')
 
 def upl(sock, cred):
     """ Receive backup of dir from user.
@@ -101,9 +107,6 @@ def upl(sock, cred):
         
         out: UPR OK or NOK
     """
-    # username = cred[0]
-    # print(cred)
-    # print('----------------------')
     msg = b''
     while True:
         try:
@@ -114,9 +117,7 @@ def upl(sock, cred):
         if not slic: break
         msg += slic
 
-    save_files(msg, cred[0])
-
-    sock.sendall(b'UPR OK\n')
+    save_files(sock, msg, cred[0])
 
 
 def rsb(args, sock, cred):
@@ -135,6 +136,7 @@ def rsb(args, sock, cred):
     except OSError:
         sock.sendall(b'RBR EOF\n')
         return
+    print('Sending '+args[0]+':')
     resp = 'RBR '+str(len(files))+' '
     resp = resp.encode()
     for file in files:
@@ -145,8 +147,9 @@ def rsb(args, sock, cred):
         file_b = ' '.join([file,date_time,size])+' '
         file_b = file_b.encode() + data + b' '
         resp += file_b
+        print(file+' '+str(size)+' sent')
 
-    # print(resp)
+    
     sock.sendall(resp)
 
 
@@ -167,11 +170,8 @@ def get_msg(sock):
 
 # TCP session with user
 def tcp_session(sock):
-    # sel.unregister(sock)
-    # sock.setblocking(True)
 
     global cred
-
 
     while True:
         msg = b''
@@ -179,7 +179,7 @@ def tcp_session(sock):
             cmd = sock.recv(4)
         except BlockingIOError:
             continue
-        print(cmd)
+        # print(cmd)
         if cmd == b'UPL ':
             upl(sock, cred)
             sel.unregister(sock)
@@ -202,11 +202,10 @@ def tcp_session(sock):
             sock.sendall(b'ERR\n')
             sock.close()
 
-    # print('closing ', sock.getsockname())
 
 def tcp_accept(sock):
     connection, client_address = sock.accept()
-    print('Accepting user connection from: ', client_address)
+    # print('Accepting user connection from: ', client_address)
     connection.setblocking(False)
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
@@ -241,21 +240,20 @@ def lsu(args, sock, addr):
         
         out: LUR OK or NOK or ERR
     """
-    print('LSU: '+str(args))
     username = args[0]
     password = args[1]
     filename = 'user_'+username+'.txt'
 
-    if os.path.isfile(filename):
-        # user exists
-        sock.sendto(b'LUR NOK\n', addr)
-    else:
+    if not os.path.isfile(filename):
         # user doesnt exist yet
         with open(filename, 'w+') as f:   f.write(password)
-        os.mkdir(os.path.realpath('')+'/user_'+username)
+        try:
+            os.mkdir(os.path.realpath('')+'/user_'+username)
+        except OSError:
+            sock.sendto(b'LUR NOK\n', addr)
         print("New user: " + username)
-        sock.sendto(b'LUR OK\n', addr)
 
+    sock.sendto(b'LUR OK\n', addr)
 
 
 def dlb(args, sock, addr):
@@ -266,16 +264,19 @@ def dlb(args, sock, addr):
         
         out: DBR OK or NOK
     """
-    path = os.getcwd()+'/user_'+args[0]+'/'+args[1]
+    user = args[0]
+    directory = args[1]
+    path = os.getcwd()+'/user_'+user+'/'+directory
     if not os.path.exists(path):
         sock.sendto(b'DBR NOK\n', addr)
         return
     try:
         shutil.rmtree(path, ignore_errors=True)
-        if not os.listdir(os.getcwd()+'/user_'+args[0]):
-            # empty
-            os.rmdir(os.getcwd()+'/user_'+args[0])
-            os.remove(os.getcwd()+'/user_'+args[0]+'.txt')
+        if not os.listdir(os.getcwd()+'/user_'+user): # 0 folders
+            os.rmdir(os.getcwd()+'/user_'+user)
+            os.remove(os.getcwd()+'/user_'+user+'.txt')
+            print('Removed user '+user+': User has no more folders')
+        else: print('Removed '+directory+' from user '+user)
         sock.sendto(b'DBR OK\n', addr)
     except OSError:
         sock.sendto(b'DBR NOK\n', addr)
@@ -296,8 +297,6 @@ def udp_cs(sock):
     args = msg.split()
     callable = actions.get(args[0])
     callable(args[1:], sock, addr)
-
-    print(msg)
 
 
 
@@ -343,7 +342,6 @@ try:
     server_address = (hostname, cmd_line_args["bsport"])
     # server_address = ('localhost', cmd_line_args['bsport'])
     tcp_sock.bind(server_address)
-    print('listening for users...')
     tcp_sock.listen(1)
     tcp_sock.setblocking(False)
     sel.register(tcp_sock, selectors.EVENT_READ, tcp_accept)

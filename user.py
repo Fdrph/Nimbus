@@ -10,18 +10,11 @@ import time
 # 
 # group 8
 
-# Global variables storing the currently loged in user's
-# username and password
-username = ''
-password = ''
-
 # Argument Parser for CSname and CSport
 parser = argparse.ArgumentParser(description='User Server')
 parser.add_argument('-n', '--csname', default='localhost', help='Central Server name')
 parser.add_argument('-p', '--csport', type=int, default=58008, help='Central Server port')
 cmd_line_args = vars(parser.parse_args())
-# debug
-# print(args)
 
 
 def create_tcp_socket(server_info):
@@ -41,7 +34,7 @@ def create_tcp_socket(server_info):
 
     # Connect to server provided in parameter
     server_address = (server_info["csname"], server_info["csport"])
-    print("connecting to server: %s port: %d" % server_address)
+    # print("connecting to server: %s port: %d" % server_address)
     try:
         sock.connect(server_address)
     except OSError as e:
@@ -51,14 +44,13 @@ def create_tcp_socket(server_info):
     return sock
 
 
-
 def send_msg_sock(msg, sock):
     """ Sends a message to the socket provided and returns the response as a string
         
         sends and receives a string with a newline "\\n" character
         to delimit end of message
     """
-    print("sending: " + msg)
+    # print("sending: " + msg)
     msg += '\n'
     sock.sendall(msg.encode('utf-8'))
     
@@ -72,7 +64,7 @@ def send_msg_sock(msg, sock):
         if msg.find(b'\n') != -1:
             break
 
-    print("response: " + msg.decode('utf-8'))
+    # print("response: " + msg.decode('utf-8'))
     return msg.decode('utf-8').rstrip('\n')
 
 
@@ -88,10 +80,10 @@ def authenticate(user, passwd, sock):
         print('The password entered is incorrect')
         return False
     if response == 'NEW':
-        print('New user has been created')
+        print('New user has been created: '+user)
         return True
     if response == 'OK':
-        print('Login was successful')
+        # print('Login was successful')
         return True
     else:
         print('Could not login: ' + response)
@@ -124,11 +116,15 @@ def deluser(args, credentials, server_info):
     else:
         print('Unexpected answer: ' + response)
 
+    print()
     sock.close()
     return success
 
 
 def save_files(data, directory):
+    """ Auxiliary to restore() that takes all the files in bytes formatted in
+        a specific way and parses fileinfo and their data bytes, then saves writes them to disk
+    """
     path = os.getcwd()+'/'+directory
     if not os.path.exists(path):
         os.mkdir(path)
@@ -139,11 +135,11 @@ def save_files(data, directory):
             if byte==32: break #32=space
             val += chr(byte)
         data = data[len(val)+1:] #remove what we read
-        # print(val)
         return val, data
 
     N, data = rd_to_space(data)
     N = int(N)  #number of files
+    files = []
     # FOR EACH FILE
     for i in range(0, N):
         filename, data = rd_to_space(data)
@@ -153,13 +149,14 @@ def save_files(data, directory):
         size = int(size)
         file = data[:size]
         with open(path+'/'+filename, 'wb') as f: f.write(file)
-        print(t1+' '+t2)
         t = time.mktime(time.strptime(t1+' '+t2, '%d.%m.%Y %H:%M:%S'))
         os.utime(path+'/'+filename, (t,t))
         data = data[size+1:]
-
-
-    # print(data)
+        files.append(filename)
+    
+    print('completed - '+directory+': ', end='')
+    [print(' '+x, end='') for x in files]
+    print('\n')
 
 
 def backup(args, credentials, server_info):
@@ -203,12 +200,12 @@ def backup(args, credentials, server_info):
     response = send_msg_sock(msg, sock).split()
     sock.close()
     if response[1] == 'EOF':
-        print('BS responded with an error')
+        print('BS for this folder is offline or there is no BS available')
         return
     if response[3] == '0':
         print('No more files need backup')
         return
-    # print(response)
+    print('Backup to: '+response[1]+' '+response[2])
     # Now we talk to BS
     # AUT with BS
     bs_sock = create_tcp_socket({"csname":response[1], "csport":int(response[2])})
@@ -235,7 +232,7 @@ def backup(args, credentials, server_info):
     else:
         print('completed - '+directory+': ', end='')
         [print(' '+x, end='') for x in files]
-        print()
+        print('\n')
     bs_sock.close()
 
 
@@ -266,6 +263,7 @@ def restore(args, credentials, server_info):
     # now we talk to bs
     bsname = response[1]
     bsport = response[2]
+    print('Restore from: '+bsname+' '+bsport)
     bs_sock = create_tcp_socket({"csname":bsname, "csport":int(bsport)})
     if not authenticate(credentials['user'], credentials['password'], bs_sock):
         print("Couldn't authenticate with BS!")
@@ -281,18 +279,12 @@ def restore(args, credentials, server_info):
         if len(slic)<8192:
             break
     bs_sock.close()
-    # print(resp)
+ 
     if resp == b'RBR EOF\n':
         print("Couldn't receive files from BS!")
         return
     resp = resp[4:] # remove 'RGR '
     save_files(resp, args[0])
-
-    # print(resp)
-
-
-
-
 
 
 
@@ -314,7 +306,7 @@ def dirlist(args, credentials, server_info):
     if response[1] == '0':
         print('There are no directories to list')
         return
-    print(' '.join(response[2:]))
+    print(' '.join(response[2:])+'\n')
 
 
 def filelist(args, credentials, server_info):
@@ -334,13 +326,14 @@ def filelist(args, credentials, server_info):
     sock.close()
 
     if res[1] == 'NOK':
-        print("Folder doesn't exist")
+        print("Request could not be answered")
         return
 
     print('BS: '+' '.join(res[2:4])+'\n')
     res = res[4:]
     for i in range(0,len(res),4):
         print(res[i]+' '+res[i+1]+' '+res[i+2]+' '+res[i+3])
+    print()
 
 
 def delete(args, credentials, server_info):
@@ -390,7 +383,7 @@ def login(args, server_info):
         sock.close()
         return
     sock.close()
-
+    print("Login was successful")
 
     actions = { 
         'deluser':deluser,

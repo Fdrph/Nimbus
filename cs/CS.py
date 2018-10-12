@@ -65,8 +65,7 @@ def aut(args, user_socket, cred):
 
 # deals with a deluser request
 def dlu(args, user_socket, cred):
-    print('DLU')
-    print(cred)
+    print('Delete user request')
 
     try:
         userdir = '/user_'+cred[0]
@@ -75,7 +74,6 @@ def dlu(args, user_socket, cred):
             user_socket.sendall(b'DLR NOK\n')
             return
         # folder empty
-
         os.remove('user_'+cred[0]+'.txt')
         os.rmdir('.'+userdir)
     except OSError:
@@ -87,8 +85,6 @@ def dlu(args, user_socket, cred):
 
 #deals with a backup request
 def bck(args, user_socket, cred):
-    # print(args)
-    # print(cred)
 
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_sock.settimeout(2)
@@ -101,7 +97,6 @@ def bck(args, user_socket, cred):
             user_socket.sendall(b'BKR EOF\n')
             return
         bs_ip = random.choice(registered_BS)
-        print(bs_ip)
         try:
             udp_sock.sendto(b'LSU '+cred[0].encode()+b' '+cred[1].encode()+b'\n', (bs_ip[0], int(bs_ip[1])) )
             msg, info = udp_sock.recvfrom(8192)
@@ -141,13 +136,11 @@ def bck(args, user_socket, cred):
 
         args = args[2:]
         msg = msg[2:]
-        # print(msg)
         print('dir as been backed up before')
 
         final_list = []
         for i in range(0,len(args),4):
             file = args[i:i+4]
-            # print(file)
             if file[0] in msg:
                 # file already backed up, check dates
                 i = msg.index(file[0])
@@ -158,19 +151,19 @@ def bck(args, user_socket, cred):
             final_list.append(file)
 
         final_list = [' '.join(x) for x in final_list]    
-        # print(final_list)
         resp = 'BKR '+' '.join(bs_ip)+' '+str(len(final_list))+' '+' '.join(final_list)+'\n'
         print(resp)
         
         # resp = 'BKR EOF\n'
         user_socket.sendall(resp.encode())
+    print('Backup '+cred[0]+' '+args[0]+' '+' '.join(bs_ip))
     
 
 
 
 #deals with a restore request
 def rst(args, user_socket, cred):
-    print('RST')
+    print('Restore '+args[0])
 
     path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]+'/IP_port.txt'
     if not os.path.exists(path):
@@ -178,15 +171,16 @@ def rst(args, user_socket, cred):
         return
     with open(path) as f:
         bs_ip = f.read().split()
-
+    if bs_ip not in registered_BS:
+        user_socket.sendall(b'RSR EOF\n')
+        return
     resp = 'RSR '+' '.join(bs_ip)+'\n'
     user_socket.sendall(resp.encode())
 
 
 #deals with a dirlist request
 def lsd(args, user_socket, cred):
-    print('LSD')
-    print(cred)
+    print('Directory list request')
 
     dirlist = os.listdir('.'+'/user_'+cred[0])
     if not dirlist:
@@ -202,8 +196,7 @@ def lsd(args, user_socket, cred):
 
 #deals with a filelist request
 def lsf(args, user_socket, cred):
-    print('LSF')
-    print(args)
+    print('Filelist request')
 
     path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]+'/IP_port.txt'
     if not os.path.exists(path):
@@ -211,11 +204,13 @@ def lsf(args, user_socket, cred):
         return
     with open(path) as f:
         bs_ip = f.read().split()
-    
+    if bs_ip not in registered_BS:
+        user_socket.sendall(b'LFD NOK\n')
+        return
     cmd = 'LSF '+cred[0]+' '+args[0]+'\n'
     try:
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp_sock.settimeout(1)
+        udp_sock.settimeout(4)
         udp_sock.sendto(cmd.encode(), (bs_ip[0], int(bs_ip[1])) )
         msg, info = udp_sock.recvfrom(8192)
     except OSError:
@@ -233,8 +228,7 @@ def lsf(args, user_socket, cred):
 
 #deals with a delete directory  request
 def delete(args, user_socket, cred):
-    print(args)
-    print(cred)
+    print('Delete directory '+args[0])
     
     path = os.getcwd()+'/user_'+cred[0]+'/'+args[0]+'/IP_port.txt'
     if not os.path.exists(path):
@@ -242,11 +236,13 @@ def delete(args, user_socket, cred):
         return
     with open(path) as f:
         bs_ip = f.read().split()
-    
+    if bs_ip not in registered_BS:
+        user_socket.sendall(b'DDR NOK\n')
+        return
     cmd = 'DLB '+cred[0]+' '+args[0]+'\n'
     try:
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        udp_sock.settimeout(1)
+        udp_sock.settimeout(4)
         udp_sock.sendto(cmd.encode(), (bs_ip[0], int(bs_ip[1])) )
         msg, info = udp_sock.recvfrom(8192)
     except OSError:
@@ -308,12 +304,11 @@ def tcp_session(sock):
             cred = (args[1], args[2])
 
 
-    print('closing ', sock.getsockname())
+    # print('closing ', sock.getsockname())
     sock.close()
 
 def tcp_accept(sock):
     connection, client_address = sock.accept()
-    print('Accepting user connection from: ', client_address)
     connection.setblocking(False)
     sel.register(connection, selectors.EVENT_READ, tcp_session)
 
@@ -338,10 +333,6 @@ def udp_rgr(udp_sock):
             udp_sock.sendto(b'UAR OK\n', addr)
         else:
             udp_sock.sendto(b'UAR NOK\n', addr)
-
-
-    # else:
-    #     udp_sock.sendto(b'RGR ERR\n', addr)
 
 
 
