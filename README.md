@@ -1,4 +1,4 @@
-# cloud Backup
+# Nimbus Cloud Backup
 Application that allows users
 to backup the contents of a specified local directory using a cloud service.
 Made of backup server (bs folder) central server (cs folder) and client(user.py) in python using tcp/udp.
